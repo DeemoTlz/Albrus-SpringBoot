@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:jms="http://www.springframework.org/schema/jms"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+        http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd
+        http://www.springframework.org/schema/jms http://www.springframework.org/schema/jms/spring-jms.xsd">
+
+    <!-- 包扫描 -->
+    <context:component-scan base-package="com.deemo.mq.spring" />
+
+    <!-- 重发策略 -->
+    <bean id="redeliveryPolicy" class="org.apache.activemq.RedeliveryPolicy">
+        <property name="maximumRedeliveries" value="3" />
+        <property name="initialRedeliveryDelay" value="200" />
+        <!-- 在每次尝试重新发送失败后，增长等待时间 -->
+        <property name="useExponentialBackOff" value="true" />
+        <!-- 第一次失败后重新发送之前等待时间倍数，第一次 x ms，第二次 x*2 ms，只在 useExponentialBackOff = true 时有效 -->
+        <property name="backOffMultiplier" value="2" />
+        <!-- 最大传送延迟，只在 useExponentialBackOff = true 时有效 -->
+        <property name="maximumRedeliveryDelay" value="1000" />
+    </bean>
+
+    <!-- 连接工厂 -->
+    <bean id="jmsFactory" class="org.apache.activemq.pool.PooledConnectionFactory" destroy-method="stop">
+        <property name="connectionFactory">
+            <!-- ConnectionFactory实现 -->
+            <bean class="org.apache.activemq.ActiveMQConnectionFactory">
+                <property name="brokerURL" value="tcp://10.10.10.103:61616" />
+                <!-- 重发策略 -->
+                <property name="redeliveryPolicy" ref="redeliveryPolicy" />
+            </bean>
+        </property>
+        <property name="maxConnections" value="100" />
+    </bean>
+
+    <!-- 目的地 -->
+    <bean id="destinationQueue" class="org.apache.activemq.command.ActiveMQQueue">
+        <constructor-arg index="0" value="spring_deemo_queue" />
+    </bean>
+
+    <!-- 目的地 -->
+    <bean id="destinationTopic" class="org.apache.activemq.command.ActiveMQTopic">
+        <constructor-arg index="0" value="spring_deemo_topic" />
+    </bean>
+
+    <!-- Spring 提供的JMS工具类，可以进行消息发送、接收等 -->
+    <bean id="jmsTemplate" class="org.springframework.jms.core.JmsTemplate">
+        <property name="connectionFactory" ref="jmsFactory" />
+        <!-- 切换目的地 -->
+        <!--<property name="defaultDestination" ref="destinationQueue" />-->
+        <property name="defaultDestination" ref="destinationTopic" />
+        <property name="messageConverter">
+            <bean class="org.springframework.jms.support.converter.SimpleMessageConverter" />
+        </property>
+    </bean>
+
+    <!-- 监听器 -->
+    <!--<bean id="deemoMessageListener" class="com.deemo.mq.spring.DeemoMessageListener" />-->
+
+    <!-- 配置监听器，方式一 -->
+    <bean id="jmsContainer" class="org.springframework.jms.listener.DefaultMessageListenerContainer">
+        <property name="connectionFactory" ref="jmsFactory" />
+        <property name="destination" ref="destinationTopic" />
+        <property name="messageListener" ref="deemoMessageListener" />
+    </bean>
+
+    <!-- 配置监听器，方式二 -->
+    <!--<jms:listener-container container-type="default" connection-factory="jmsFactory" acknowledge="auto">
+        &lt;!&ndash; destination为目的地的名称 &ndash;&gt;
+        <jms:listener destination="spring_deemo_queue" ref="deemoMessageListener" />
+    </jms:listener-container>-->
+
+</beans>
