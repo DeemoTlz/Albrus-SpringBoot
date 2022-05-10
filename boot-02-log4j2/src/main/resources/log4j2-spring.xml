@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- status="OFF"，可以去掉，它的含义为是否记录log4j2本身的event信息，默认是OFF -->
+<!-- status=debug 可以查看log4j2的装配过程 -->
+<!-- monitorInterval: 定时检测配置文件的修改，有变化则自动重新加载配置，时间单位为秒，最小间隔为5s -->
+<!-- 日志级别以及优先级排序: OFF > FATAL > ERROR > WARN > INFO > DEBUG > TRACE > ALL -->
+<Configuration status="WARN" monitorInterval="1800">
+    <!-- 定义下面的引用名 -->
+    <Properties>
+        <!-- 日志根目录 -->
+        <property name="LOG_HOME">logging</property>
+        <!-- 服务名 -->
+        <property name="SERVER_NAME">springboot-log4j2</property>
+        <!-- 日志备份归档目录 -->
+        <property name="BACKUP_HOME">backup</property>
+        <!-- 日志切割的最小单位 -->
+        <property name="EVERY_FILE_SIZE">20M</property>
+        <!-- 日志输出级别 -->
+        <property name="OUTPUT_LOG_LEVEL">INFO</property>
+
+        <Property name="LOG_EXCEPTION_CONVERSION_WORD">%xwEx</Property>
+        <Property name="LOG_LEVEL_PATTERN">%5p</Property>
+        <Property name="LOG_DATEFORMAT_PATTERN">yyyy-MM-dd HH:mm:ss.SSS</Property>
+        <Property name="CONSOLE_LOG_PATTERN">%clr{%d{${sys:LOG_DATEFORMAT_PATTERN}}}{faint} %clr{${sys:LOG_LEVEL_PATTERN}} %clr{%pid}{magenta} %clr{---}{faint} %clr{[%15.15t]}{faint} %clr{%-40.40c{1.}}{cyan} %clr{:}{faint} %m%n${sys:LOG_EXCEPTION_CONVERSION_WORD}</Property>
+        <Property name="FILE_LOG_PATTERN">%d{${sys:LOG_DATEFORMAT_PATTERN}} ${sys:LOG_LEVEL_PATTERN} %pid --- [%t] %-40.40c{1.} : %m%n${sys:LOG_EXCEPTION_CONVERSION_WORD}</Property>
+    </Properties>
+
+    <!-- Appenders: 定义日志输出目的地，内容和格式等 -->
+    <Appenders>
+        <!-- Console:日志输出到控制台标准输出 -->
+        <Console name="Console" target="SYSTEM_OUT">
+            <!-- 控制台只输出level及以上级别的信息（onMatch），其他的直接拒绝（onMismatch） -->
+            <ThresholdFilter level="trace" onMatch="ACCEPT" onMismatch="DENY"/>
+            <!-- 输出日志的格式 -->
+            <!-- < PatternLayout pattern="%d{HH:mm:ss.SSS} [%t] %highlight{%-5level} [%c{1.}.%M()] - %msg%n"/> -->
+            <PatternLayout pattern="${sys:CONSOLE_LOG_PATTERN}" charset="${sys:CONSOLE_LOG_CHARSET}"/>
+        </Console>
+        <!-- 这个会打印出所有的信息，每次大小超过size，则这size大小的日志会自动存入按年份-月份建立的文件夹下面并进行压缩，作为存档 -->
+        <!-- 按月生成归档日志，可以使用 filePattern="logs/$${date:yyyy-MM}/app-%d{MM-dd-yyyy}-%i.log.gz" -->
+        <!-- RollingFile: 日志输出到文件,下面的文件都使用相对路径 -->
+        <!-- fileName: 当前日志输出的文件名称 -->
+        <!-- filePattern: 备份日志文件名称，备份目录为logs下面以年月命名的目录，备份时使用gz格式压缩 -->
+        <RollingRandomAccessFile name="RollingFile"
+                                 fileName="${LOG_HOME}/${SERVER_NAME}.log"
+                                 filePattern="${LOG_HOME}/${BACKUP_HOME}/$${date:yyyy-MM}/${SERVER_NAME}-%d{yyyy-MM-dd}-%i.log.gz">
+            <!-- <PatternLayout>
+                <Pattern>%date{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level - [%c{-3}.%M()] - %msg%n</Pattern>
+            </PatternLayout> -->
+            <PatternLayout pattern="${sys:FILE_LOG_PATTERN}" charset="${sys:FILE_LOG_CHARSET}"/>
+            <!-- Policies:触发策略决定何时执行备份 -->
+            <Policies>
+                <!-- TimeBasedTriggeringPolicy:日志文件按照时间备份 -->
+                <!-- interval:每1天生成一个新文件，时间单位需要结合filePattern时间%d{yyyy-MM-dd} -->
+                <!-- 同理，如果要每1小时生成一个新文件，则改成%d{yyyy-MM-ddHH} -->
+                <!-- modulate:对备份日志的生成时间纠偏，纠偏以0为基准进行，"0+interval"决定启动后第一次备份时间 -->
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+                <!-- SizeBasedTriggeringPolicy:日志文件按照大小备份 -->
+                <!-- size:指定日志文件最大为100MB，单位可以为KB、MB或GB -->
+                <SizeBasedTriggeringPolicy size="${EVERY_FILE_SIZE}"/>
+            </Policies>
+            <!-- DefaultRolloverStrategy属性如不设置，则默认为最多同一文件夹下7个文件，这里设置了5 -->
+            <!-- DefaultRolloverStrategy:翻转策略决定如何执行备份 -->
+            <!-- max:最多保存5个备份文件，结合时间使用后，在每个时间段内最多有5个备份，多出来的会被覆盖 -->
+            <!-- compressionLevel:配置日志压缩级别，范围0-9，0不压缩，1压缩速度最快，9压缩率最好，目前只对于zip压缩文件类型有效 -->
+            <DefaultRolloverStrategy max="5" compressionLevel="1">
+                <!-- Delete:删除匹配到的过期备份文件 -->
+                <!-- basePath表示日志存储的基目录，maxDepth=“1”表示当前目录。因为我们封存的历史日志在basePath里面的backup目录，所以maxDepth设置为3 -->
+                <Delete basePath="${LOG_HOME}" maxDepth="3">
+                    <!-- IfFileName:匹配文件名称 -->
+                    <!-- glob:匹配2级目录深度下的以.log.gz结尾的备份文件 -->
+                    <IfFileName glob="**/dev_*.log.gz" />
+                    <!-- IfLastModified:匹配文件修改时间 -->
+                    <!-- age:匹配超过180天的文件，单位D、H、M、S分别表示天、小时、分钟、秒 -->
+                    <IfLastModified age="365D" />
+                </Delete>
+            </DefaultRolloverStrategy>
+
+            <!-- 
+           	 重要的是，如果有多个ThresholdFilter，那么Filters是必须的，同时在Filters中，首先要过滤不符合的日志级别，把不需要的首先DENY掉，然后再ACCEPT需要的日志级别，这个次序不能搞颠倒。
+            -->
+            <Filters>
+                <!-- <ThresholdFilter level="error" onMatch="DENY" onMismatch="NEUTRAL"/> -->
+                <ThresholdFilter level="trace" onMatch="ACCEPT" onMismatch="DENY"/>
+            </Filters>
+        </RollingRandomAccessFile>
+    </Appenders>
+
+    <!-- 然后定义logger，只有定义了logger并引入的appender，appender才会生效 -->
+    <Loggers>
+        <!-- name: 打印日志的类的包路径 -->
+        <!-- additivity: true当前的Logger打印的日志附加到Root，false仅仅打印到RollingFile -->
+        <AsyncLogger name="org.apache.catalina.startup.DigesterFactory" level="error" />
+        <AsyncLogger name="org.apache.catalina.util.LifecycleBase" level="error" />
+        <AsyncLogger name="org.apache.coyote.http11.Http11NioProtocol" level="warn" />
+        <AsyncLogger name="org.apache.sshd.common.util.SecurityUtils" level="warn"/>
+        <AsyncLogger name="org.apache.tomcat.util.net.NioSelectorPool" level="warn" />
+        <AsyncLogger name="org.eclipse.jetty.util.component.AbstractLifeCycle" level="error" />
+        <AsyncLogger name="org.hibernate.validator.internal.util.Version" level="warn" />
+        <AsyncLogger name="org.springframework.boot.actuate.endpoint.jmx" level="warn"/>
+
+        <!-- 过滤掉spring和mybatis的一些无用的DEBUG信息 -->
+        <AsyncLogger name="org.mybatis" level="WARN"/>
+        <!-- 监控系统信息 -->
+        <!-- 若是additivity设为false，则 子Logger 只会在自己的appender里输出，而不会在 父Logger 的appender里输出。 -->
+        <AsyncLogger name="org.springframework" level="INFO"/>
+        <AsyncLogger name="springfox.documentation.spring" level="WARN"/>
+        <AsyncLogger name="org.springframework.web" level="WARN"/>
+        <AsyncLogger name="org.quartz" level="WARN"/>
+        <AsyncLogger name="com.alibaba" level="WARN"/>
+
+        <!-- 连接池相关日志 -->
+        <!-- druid数据源配置打印日志 start -->
+        <AsyncLogger name="druid.sql" level="INFO"/>
+        <AsyncLogger name="druid.sql.DataSource" level="INFO"/>
+        <AsyncLogger name="druid.sql.Connection" level="INFO"/>
+        <AsyncLogger name="druid.sql.Statement" level="INFO"/>
+        <AsyncLogger name="druid.sql.ResultSet" level="INFO"/>
+
+        <!-- 建立一个默认的root的logger，需要在root的level中指定输出的级别 -->
+        <!-- level日志级别: ALL < TRACE < DEBUG < INFO < WARN < ERROR < FATAL < OFF -->
+        <AsyncRoot level="INFO" additivity="false" includeLocation="true">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="RollingFile"/>
+        </AsyncRoot>
+    </Loggers>
+</Configuration>
