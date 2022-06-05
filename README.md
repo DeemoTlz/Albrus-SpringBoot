@@ -393,6 +393,862 @@ public boolean shouldSkip(@Nullable AnnotatedTypeMetadata metadata, @Nullable Co
 }
 ```
 
+## 常用插件
+
+### lombok
+
+### dev-tools
+
+`dev-tools` 是 restart 级别的插件，如果想要支持热更新 reload，需要使用付费 ==**JRebel**==。
+
+## `yaml`
+
+### 字符串
+
+- 可以不加单引号或双引号
+- 单引号会转义字符，例如 `\n` -> `\\n` 进行原样输出
+- 双引号不会转移字符，例如 `\n` 会被输出为换行
+
+### 配置提示
+
+Annotation Processor：`spring-boot-configuration-processor`
+
+添加引用后，在 `yaml` 中配置自定义配置时将会有提示：![image-20220603005759266](images/image-20220603005759266.png)
+
+注意，打包的时候需要将其排除：![image-20220603005842447](images/image-20220603005842447.png)
+
+## Web 开发
+
+### 接管 Spring MVC
+
+If you want to keep those Spring Boot MVC customizations and make more [MVC customizations](https://docs.spring.io/spring/docs/5.2.9.RELEASE/spring-framework-reference/web.html#mvc) (interceptors, formatters, view controllers, and other features), you can add your own `@Configuration` class of type `WebMvcConfigurer` but **without** `@EnableWebMvc`.
+
+**不用 `@EnableWebMvc` 注解。使用 `@Configuration` + `WebMvcConfigurer` 自定义规则。**
+
+
+
+If you want to provide custom instances of `RequestMappingHandlerMapping`, `RequestMappingHandlerAdapter`, or `ExceptionHandlerExceptionResolver`, and still keep the Spring Boot MVC customizations, you can declare a bean of type `WebMvcRegistrations` and use it to provide custom instances of those components.
+
+**声明 `WebMvcRegistrations` 改变默认底层组件。**
+
+
+
+If you want to take complete control of Spring MVC, you can add your own `@Configuration` annotated with `@EnableWebMvc`, or alternatively add your own `@Configuration`-annotated `DelegatingWebMvcConfiguration` as described in the Javadoc of `@EnableWebMvc`.
+
+**使用 `@EnableWebMvc + @Configuration+DelegatingWebMvcConfiguration` 全面接管Spring MVC。**
+
+### 基础功能分析
+
+#### 静态资源访问目录
+
+静态资源可以放在以下目录：
+
+- `/static`
+- `/public`
+- `/resources`
+- `/META-INF/resources`
+
+访问规则：项目根路径 + 静态资源名
+
+原理：先去 **Controller** 中找映射，找不到再交给**静态资源处理器**处理，还是找不到就 404。
+
+#### 静态资源路径
+
+```yaml
+spring:
+  mvc:
+    static-path-pattern: /res/**
+
+  resources:
+    static-locations: [classpath:/albrus/]
+```
+
+解释：静态资源去 `/albrus/` 文件夹下寻找，并且访问路径需要添加前缀 `/res/`
+
+#### webjar
+
+> 自动映射：`/webjars/**`：`http://localhost:8080/webjars/jquery/3.5.1/jquery.js`
+
+```xml
+<dependency>
+    <groupId>org.webjars</groupId>
+    <artifactId>jquery</artifactId>
+    <version>3.5.1</version>
+</dependency>
+```
+
+### 欢迎页支持
+
+欢迎页：静态资源下添加 `index.html` 页面
+
+favicon：静态资源下添加 `favicon.ico` 图标
+
+注意：`static-path-pattern` 会影响 欢迎页 和 favicon！
+
+不存在静态页面 `index.html` 时会判断是否有动态的欢迎页，即 Controller 下有没有：
+
+```java
+WelcomePageHandlerMapping(TemplateAvailabilityProviders templateAvailabilityProviders,
+                          ApplicationContext applicationContext, Optional<Resource> welcomePage, String staticPathPattern) {
+    if (welcomePage.isPresent() && "/**".equals(staticPathPattern)) {
+        // 要用欢迎页功能，必须是/**
+        logger.info("Adding welcome page: " + welcomePage.get());
+        setRootViewName("forward:index.html");
+    }
+    else if (welcomeTemplateExists(templateAvailabilityProviders, applicationContext)) {
+        // 调用Controller  /index
+        logger.info("Adding welcome page template: index");
+        setRootViewName("index");
+    }
+}
+```
+
+### REST
+
+```yaml
+spring:
+  mvc:
+    hiddenmethod:
+      filter:
+        enabled: true   #开启页面表单的Rest功能
+```
+
+- ==表单提交==带上：`_method=PUT`
+- 请求被 `HiddenHttpMethodFilter` 拦截
+
+- - 请求是否正常，并且是POST
+
+- - - 获取 `_method`的值
+    - 兼容以下请求：`PUT、DELETE、PATCH`
+    - **原生 `request(post)`，包装模式 `requesWrapper` 重写了 `getMethod` 方法，以后的方法调用 `getMethod` 是调用 `requesWrapper`**
+
+表单提交仅支持 `GET、POST`，例如 Post Man 原生支持无需借助 `HiddenHttpMethodFilter`。
+
+**自动有默认的 `_method`？**
+
+自定义一个 `HiddenHttpMethodFilter`，![image-20220604100439890](images/image-20220604100439890.png)
+
+### `DispatcherServlet`
+
+```java
+DispatcherServlet extends FrameworkServlet
+    -> extends HttpServletBean
+        -> extends HttpServlet
+```
+
+请求路径：
+
+`HttpServlet#doGet() > FrameworkServlet#doGet() > FrameworkServlet#processRequest() -> DispatcherServlet#doService() > DispatcherServlet#doDispatch()`
+
+```java
+protected void doDispatch(HttpServletRequest request, HttpServletResponse response) throws Exception {
+		HttpServletRequest processedRequest = request;
+		HandlerExecutionChain mappedHandler = null;
+		boolean multipartRequestParsed = false;
+
+		WebAsyncManager asyncManager = WebAsyncUtils.getAsyncManager(request);
+
+		try {
+			ModelAndView mv = null;
+			Exception dispatchException = null;
+
+			try {
+				processedRequest = checkMultipart(request);
+				multipartRequestParsed = (processedRequest != request);
+
+				// 找到当前请求使用哪个 Handler（Controller的方法）处理
+				mappedHandler = getHandler(processedRequest);
+                
+                // HandlerMapping：处理器映射。/xxx->>xxxx
+            }
+        }
+    
+    // ...
+}
+```
+
+`getHandler()`
+
+```java
+protected HandlerExecutionChain getHandler(HttpServletRequest request) throws Exception {
+		if (this.handlerMappings != null) {
+			for (HandlerMapping mapping : this.handlerMappings) {
+				HandlerExecutionChain handler = mapping.getHandler(request);
+				if (handler != null) {
+					return handler;
+				}
+			}
+		}
+		return null;
+	}
+```
+
+Spring Boot 自动配置了默认的 `RequestMappingHandlerMapping`，里面包含了所有 `@RequestMapping` 的映射规则：![image.png](images/1603181460034-ba25f3c0-9cfd-4432-8949-3d1dd88d8b12.png)
+
+**`DispatcherServlet#List<HandlerMapping>` 排序：**
+
+```java
+// org.springframework.web.servlet.DispatcherServlet#initHandlerMappings
+private void initHandlerMappings(ApplicationContext context) {
+    AnnotationAwareOrderComparator.sort(this.handlerMappings);
+}
+```
+
+`RequestMappingHandlerMapping` 是 `AbstractHandlerMapping` 的子类，`AbstractHandlerMapping` 实现了 `Ordered` 接口，且 `RequestMappingHandlerMapping mapping = createRequestMappingHandlerMapping();mapping.setOrder(0);`
+
+### 参数处理及原理
+
+#### 常用注解
+
+`@PathVariable、@RequestHeader、@ModelAttribute、@RequestParam、@MatrixVariable、@CookieValue、@RequestBody`
+
+#### 不常用注解
+
+##### `@RequestAttribute & @MatrixVariable`
+
+`@RequestAttribute`：从 Request Attributes 中获取
+
+`@MatrixVariable`：矩阵变量（**Spring Boot 默认禁用了矩阵变量**）：
+
+- 原理
+  - 对于路径的处理，使用 `UrlPathHelper` 实现的
+  - **`UrlPathHelper` 有一个 `removeSemicolonContent` 属性，默认是 `true`：移除分号内容**
+- 示例
+  - `/cars/{path}?xxxx=xxxx&yyyy=yyyy` --> `@ResuestParam`
+  - `/cars/{path;xxxx=xxxx;yyyy=yyyy}` --> `@MatrixVariable`，用英文 `;` 分割
+  - `cars/{path1;x=x;y=y}/{path2;z=z}`
+
+##### 开启矩阵变量（`WebMvcConfigurer`）
+
+Spring Boot 会获取容器中的所有 `WebMvcConfigurer` 接口类型的实例对象，在合适的时候调用接口中的方法：
+
+```java
+@Configuration(proxyBeanMethods = false)
+public class DelegatingWebMvcConfiguration extends WebMvcConfigurationSupport {
+
+	private final WebMvcConfigurerComposite configurers = new WebMvcConfigurerComposite();
+
+
+    // 获取容器中的 WebMvcConfigurer 并设置
+	@Autowired(required = false)
+	public void setConfigurers(List<WebMvcConfigurer> configurers) {
+		if (!CollectionUtils.isEmpty(configurers)) {
+			this.configurers.addWebMvcConfigurers(configurers);
+		}
+	}
+
+
+    // 底层便是调用 WebMvcConfigurer 接口的方法
+	@Override
+	protected void configurePathMatch(PathMatchConfigurer configurer) {
+		this.configurers.configurePathMatch(configurer);
+	}
+    
+    // 调用 WebMvcConfigurer 接口的其他方法 ...
+}
+
+class WebMvcConfigurerComposite implements WebMvcConfigurer {
+    
+    @Override
+	public void configurePathMatch(PathMatchConfigurer configurer) {
+		for (WebMvcConfigurer delegate : this.delegates) {
+			delegate.configurePathMatch(configurer);
+		}
+	}
+    
+    // 调用 WebMvcConfigurer 接口的其他方法 ...
+}
+```
+
+在 `MockMvc mockMvc(MockMvcBuilder builder)` 中被调用：
+
+```java
+public abstract class AbstractMockMvcBuilder<B extends AbstractMockMvcBuilder<B>>
+		extends MockMvcBuilderSupport implements ConfigurableMockMvcBuilder<B> {
+    @Override
+	@SuppressWarnings("rawtypes")
+	public final MockMvc build() {
+        // 从这里
+		WebApplicationContext wac = initWebAppContext();
+		ServletContext servletContext = wac.getServletContext();
+        // ...
+    }
+}
+
+// org.springframework.test.web.servlet.setup.StandaloneMockMvcBuilder#initWebAppContext
+public class StandaloneMockMvcBuilder extends AbstractMockMvcBuilder<StandaloneMockMvcBuilder> {
+    @Override
+	protected WebApplicationContext initWebAppContext() {
+		MockServletContext servletContext = new MockServletContext();
+		StubWebApplicationContext wac = new StubWebApplicationContext(servletContext);
+        // 这里面便是调用逻辑
+		registerMvcSingletons(wac);
+		servletContext.setAttribute(WebApplicationContext.ROOT_WEB_APPLICATION_CONTEXT_ATTRIBUTE, wac);
+		return wac;
+	}
+}
+```
+
+那么开启**矩阵变量**功能，可以在容器中注册一个自定义的 `WebMvcConfigurer` 关闭 `UrlPathHelper.removeSemicolonContent`，`WebMvcConfigurer` 中的其他接口方法同理：
+
+```java
+@Bean
+public WebMvcConfigurer webMvcConfigurer() {
+    return new WebMvcConfigurer() {
+        /**
+             * 开启矩阵变量
+             */
+        @Override
+        public void configurePathMatch(PathMatchConfigurer configurer) {
+            UrlPathHelper urlPathHelper = new UrlPathHelper();
+            urlPathHelper.setRemoveSemicolonContent(false);
+            configurer.setUrlPathHelper(urlPathHelper);
+        }
+    }
+```
+
+使用示例：
+
+```java
+// /cars/sell;low=34;brand=byd,audi,yd
+// 3、矩阵变量必须有 URL 路径变量才能被解析
+@GetMapping("/cars/{path}")
+public Tip carsSell(@MatrixVariable("low") Integer low,
+                    @MatrixVariable("brand") List<String> brand,
+                    @PathVariable("path") String path) {...}
+
+// /boss/1;age=20/2;age=10
+@GetMapping("/boss/{bossId}/{empId}")
+public Tip boss(@MatrixVariable(value = "age",pathVar = "bossId") Integer bossAge,
+                @MatrixVariable(value = "age",pathVar = "empId") Integer empAge) {...}
+```
+
+#### 参数解析原理
+
+获取到 `HandlerExecutionChain mappedHandler` 过后，再交由 `HandlerAdapter ha` 去执行具体的业务方法，包括参数解析和返回值解析：
+
+```java
+protected void doDispatch(HttpServletRequest request, HttpServletResponse response) throws Exception {
+    HttpServletRequest processedRequest = request;
+    HandlerExecutionChain mappedHandler = null;
+    boolean multipartRequestParsed = false;
+
+    WebAsyncManager asyncManager = WebAsyncUtils.getAsyncManager(request);
+
+    try {
+        ModelAndView mv = null;
+        Exception dispatchException = null;
+
+        try {
+            processedRequest = checkMultipart(request);
+            multipartRequestParsed = (processedRequest != request);
+
+            // Determine handler for the current request.
+            mappedHandler = getHandler(processedRequest);
+            if (mappedHandler == null) {
+                noHandlerFound(processedRequest, response);
+                return;
+            }
+
+            // Determine handler adapter for the current request.
+            HandlerAdapter ha = getHandlerAdapter(mappedHandler.getHandler());
+
+            // Process last-modified header, if supported by the handler.
+            String method = request.getMethod();
+            boolean isGet = HttpMethod.GET.matches(method);
+            if (isGet || HttpMethod.HEAD.matches(method)) {
+                long lastModified = ha.getLastModified(request, mappedHandler.getHandler());
+                if (new ServletWebRequest(request, response).checkNotModified(lastModified) && isGet) {
+                    return;
+                }
+            }
+
+            if (!mappedHandler.applyPreHandle(processedRequest, response)) {
+                return;
+            }
+
+            // Actually invoke the handler.
+            mv = ha.handle(processedRequest, response, mappedHandler.getHandler());
+
+            if (asyncManager.isConcurrentHandlingStarted()) {
+                return;
+            }
+
+            applyDefaultViewName(processedRequest, mv);
+            mappedHandler.applyPostHandle(processedRequest, response, mv);
+        }
+    }
+}
+```
+
+`RequestMappingHandlerAdapter`：
+
+最终会来到 `RequestMappingHandlerAdapter` 的 `invokeHandlerMethod()` 中，里面会设置==参数解析器==和==返回值解析器==，通过参数解析器和返回值解析器来处理请求参数和响应数据：
+
+```java
+@Nullable
+protected ModelAndView invokeHandlerMethod(HttpServletRequest request,
+                                           HttpServletResponse response, HandlerMethod handlerMethod) throws Exception {
+
+    ServletWebRequest webRequest = new ServletWebRequest(request, response);
+    try {
+        WebDataBinderFactory binderFactory = getDataBinderFactory(handlerMethod);
+        ModelFactory modelFactory = getModelFactory(handlerMethod, binderFactory);
+
+        // ① 参数解析器、返回值解析器
+        ServletInvocableHandlerMethod invocableMethod = createInvocableHandlerMethod(handlerMethod);
+        if (this.argumentResolvers != null) {
+            invocableMethod.setHandlerMethodArgumentResolvers(this.argumentResolvers);
+        }
+        if (this.returnValueHandlers != null) {
+            invocableMethod.setHandlerMethodReturnValueHandlers(this.returnValueHandlers);
+        }
+        // ...
+
+        // ② 执行方法
+        invocableMethod.invokeAndHandle(webRequest, mavContainer);
+        if (asyncManager.isConcurrentHandlingStarted()) {
+            return null;
+        }
+
+        // ③ 处理响应，mavContainer 后文 Map & Model 会使用到
+        return getModelAndView(mavContainer, modelFactory, webRequest);
+    }
+    finally {
+        webRequest.requestCompleted();
+    }
+}
+```
+
+- 参数解析器：<img src="images/1603263283504-85bbd4d5-a9af-4dbf-b6a2-30b409868774.png" alt="image.png" style="zoom:50%;" />
+- 返回值解析器：<img src="images/1603263524227-386da4be-43b1-4b17-a2cc-8cf886346af9.png" alt="image.png" style="zoom:50%;" />
+
+② 遍历参数列表，通过参数解析器解析参数，再通过反射调用目标 Controller 方法：
+
+```java
+// org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod#invokeAndHandle
+public void invokeAndHandle(ServletWebRequest webRequest, ModelAndViewContainer mavContainer,
+                            Object... providedArgs) throws Exception {
+
+    // 处理参数、执行方法、获取响应
+    Object returnValue = invokeForRequest(webRequest, mavContainer, providedArgs);
+    setResponseStatus(webRequest);
+
+    // ...
+
+    try {
+        // 返回值处理
+        this.returnValueHandlers.handleReturnValue(
+            returnValue, getReturnValueType(returnValue), mavContainer, webRequest);
+    }
+    // ...
+}
+```
+
+`invokeForRequest`：
+
+```java
+// org.springframework.web.method.support.InvocableHandlerMethod#invokeForRequest
+protected Object[] getMethodArgumentValues(NativeWebRequest request, @Nullable ModelAndViewContainer mavContainer, Object... providedArgs) throws Exception {
+    // ...
+    
+    MethodParameter[] parameters = getMethodParameters();
+    if (ObjectUtils.isEmpty(parameters)) {
+        return EMPTY_ARGS;
+    }
+
+    Object[] args = new Object[parameters.length];
+    for (int i = 0; i < parameters.length; i++) {
+        MethodParameter parameter = parameters[i];
+        // 遍历寻找哪一个支持，找到就缓存：this.argumentResolverCache.put(parameter, result);
+        if (!this.resolvers.supportsParameter(parameter)) {
+            throw new IllegalStateException(formatArgumentError(parameter, "No suitable resolver"));
+        }
+
+        // 解析参数
+        args[i] = this.resolvers.resolveArgument(parameter, mavContainer, request, this.dataBinderFactory);
+
+        // ...
+    }
+
+    // ...
+}
+```
+
+- 会将参数解析器和它支持的注解用懒加载的形式缓存（`this.argumentResolverCache.put(parameter, result);`）起来，因此 Spring MVC 初次使用会比较慢
+
+- ```java
+  // org.springframework.web.method.support.HandlerMethodArgumentResolverComposite
+  private final Map<MethodParameter, HandlerMethodArgumentResolver> argumentResolverCache =
+  			new ConcurrentHashMap<>(256);
+  ```
+
+举个栗子 `PathVariableMethodArgumentResolver`：
+
+```java
+public class PathVariableMethodArgumentResolver extends AbstractNamedValueMethodArgumentResolver
+		implements UriComponentsContributor {
+
+	private static final TypeDescriptor STRING_TYPE_DESCRIPTOR = TypeDescriptor.valueOf(String.class);
+
+
+	@Override
+	public boolean supportsParameter(MethodParameter parameter) {
+        // 是否有 @PathVariable 注解
+		if (!parameter.hasParameterAnnotation(PathVariable.class)) {
+			return false;
+		}
+		if (Map.class.isAssignableFrom(parameter.nestedIfOptional().getNestedParameterType())) {
+			PathVariable pathVariable = parameter.getParameterAnnotation(PathVariable.class);
+			return (pathVariable != null && StringUtils.hasText(pathVariable.value()));
+		}
+		return true;
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	@Nullable
+	protected Object resolveName(String name, MethodParameter parameter, NativeWebRequest request) throws Exception {
+        // 路径参数已经被提前放在请求域中
+		Map<String, String> uriTemplateVars = (Map<String, String>) request.getAttribute(
+				HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE, RequestAttributes.SCOPE_REQUEST);
+		return (uriTemplateVars != null ? uriTemplateVars.get(name) : null);
+	}
+}
+```
+
+- `PathVariableMethodArgumentResolver` 支持 `@PathVariable` 注解
+- 路径参数已经被提前放在请求域中：`HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE`
+
+#### `Servlet API`
+
+`ServletRequestMethodArgumentResolver`：
+
+```java
+@Override
+public boolean supportsParameter(MethodParameter parameter) {
+    Class<?> paramType = parameter.getParameterType();
+    return (WebRequest.class.isAssignableFrom(paramType) ||
+            ServletRequest.class.isAssignableFrom(paramType) ||
+            MultipartRequest.class.isAssignableFrom(paramType) ||
+            HttpSession.class.isAssignableFrom(paramType) ||
+            (pushBuilder != null && pushBuilder.isAssignableFrom(paramType)) ||
+            Principal.class.isAssignableFrom(paramType) ||
+            InputStream.class.isAssignableFrom(paramType) ||
+            Reader.class.isAssignableFrom(paramType) ||
+            HttpMethod.class == paramType ||
+            Locale.class == paramType ||
+            TimeZone.class == paramType ||
+            ZoneId.class == paramType);
+}
+```
+
+- `ServletRequestMethodArgumentResolver` 支持以上类型的注解
+
+#### `Map & Model`
+
+```java
+@GetMapping("/albrus")
+public String testAlbrus(Map<String, Object> map, Model model, HttpServletRequest request) {
+    map.put("a", 1);
+    model.addAttribute("b", 2);
+    request.setAttribute("c", 3);
+    
+    return "foward:/success";
+}
+
+@ResponseBody
+@GetMapping("/success")
+public Map success(HttpServletRequest request) {
+    // 这里可以从 request 中获取 /albrus 请求设置的 a、b、c
+}
+```
+
+- `map、model、request` 中存放的数据最终都会被自动写入到请求域中
+
+**Map、Model类型的参数**，会返回 `mavContainer.getModel();` --> `BindingAwareModelMap`，是 Model 也是 Map，并且是同一个对象！![image.png](images/1603271442869-63b4c3c7-c721-4074-987d-cbe5999273ae.png)![image.png](images/1603271678813-d8e1a1e5-94fa-412c-a7f1-6f27174fd127.png)
+
+**底层原理**
+
+上节说到，`Map & Model` 获取到的都是 `ModelAndViewContainer` 中的 `defaultModel`，是同一个对象，因此在 Controller 处理结束后，对 `Map & Model` 的修改可以在 `ModelAndViewContainer.defaultModel` 中获取到！
+
+在 `DispatcherServlet` 处理完请求后（获取到返回值后），会处理派发结果：`processDispatchResult`，底层在视图解析器 `InternalResourceView` 中会调用 `renderMergedOutputModel()` 进行合并处理：
+
+```java
+// InternalResourceView
+@Override
+protected void renderMergedOutputModel(Map<String, Object> model, HttpServletRequest request, HttpServletResponse response) throws Exception {
+
+    // Expose the model object as request attributes.
+    exposeModelAsRequestAttributes(model, request);
+    
+    // ...
+}
+
+protected void exposeModelAsRequestAttributes(Map<String, Object> model, HttpServletRequest request) throws Exception {
+
+    //model中的所有数据遍历挨个放在请求域中
+    model.forEach((name, value) -> {
+        if (value != null) {
+            request.setAttribute(name, value);
+        }
+        else {
+            request.removeAttribute(name);
+        }
+    });
+}
+```
+
+#### POJO 类参数绑定
+
+##### 底层原理
+
+底层使用 `ServletModelAttributeMethodProcessor` 实现。
+
+判断是否是简单类型：
+
+```java
+public static boolean isSimpleValueType(Class<?> type) {
+    return (Void.class != type && void.class != type &&
+            (ClassUtils.isPrimitiveOrWrapper(type) ||
+             Enum.class.isAssignableFrom(type) ||
+             CharSequence.class.isAssignableFrom(type) ||
+             Number.class.isAssignableFrom(type) ||
+             Date.class.isAssignableFrom(type) ||
+             Temporal.class.isAssignableFrom(type) ||
+             URI.class == type ||
+             URL.class == type ||
+             Locale.class == type ||
+             Class.class == type));
+}
+```
+
+绑定参数：
+
+```java
+@Override
+@Nullable
+public final Object resolveArgument(MethodParameter parameter, @Nullable ModelAndViewContainer mavContainer,
+                                    NativeWebRequest webRequest, @Nullable WebDataBinderFactory binderFactory) throws Exception {
+
+    Assert.state(mavContainer != null, "ModelAttributeMethodProcessor requires ModelAndViewContainer");
+    Assert.state(binderFactory != null, "ModelAttributeMethodProcessor requires WebDataBinderFactory");
+
+    String name = ModelFactory.getNameForParameter(parameter);
+    ModelAttribute ann = parameter.getParameterAnnotation(ModelAttribute.class);
+    if (ann != null) {
+        mavContainer.setBinding(name, ann.binding());
+    }
+
+    Object attribute = null;
+    BindingResult bindingResult = null;
+
+    if (mavContainer.containsAttribute(name)) {
+        attribute = mavContainer.getModel().get(name);
+    }
+    else {
+        // Create attribute instance
+        try {
+            attribute = createAttribute(name, parameter, binderFactory, webRequest);
+        }
+        catch (BindException ex) {
+            if (isBindExceptionRequired(parameter)) {
+                // No BindingResult parameter -> fail with BindException
+                throw ex;
+            }
+            // Otherwise, expose null/empty value and associated BindingResult
+            if (parameter.getParameterType() == Optional.class) {
+                attribute = Optional.empty();
+            }
+            bindingResult = ex.getBindingResult();
+        }
+    }
+
+    if (bindingResult == null) {
+        // Bean property binding and validation;
+        // skipped in case of binding failure on construction.
+        WebDataBinder binder = binderFactory.createBinder(webRequest, attribute, name);
+        if (binder.getTarget() != null) {
+            if (!mavContainer.isBindingDisabled(name)) {
+                bindRequestParameters(binder, webRequest);
+            }
+            validateIfApplicable(binder, parameter);
+            if (binder.getBindingResult().hasErrors() && isBindExceptionRequired(binder, parameter)) {
+                throw new BindException(binder.getBindingResult());
+            }
+        }
+        // Value type adaptation, also covering java.util.Optional
+        if (!parameter.getParameterType().isInstance(attribute)) {
+            attribute = binder.convertIfNecessary(binder.getTarget(), parameter.getParameterType(), parameter);
+        }
+        bindingResult = binder.getBindingResult();
+    }
+
+    // Add resolved attribute and BindingResult at the end of the model
+    Map<String, Object> bindingResultModel = bindingResult.getModel();
+    mavContainer.removeAttributes(bindingResultModel);
+    mavContainer.addAllAttributes(bindingResultModel);
+
+    return attribute;
+}
+```
+
+- `attribute = createAttribute(name, parameter, binderFactory, webRequest);`：创建 JavaBean 参数示例
+- `bindRequestParameters(binder, webRequest);`：绑定数据到 JavaBean 中
+- `WebDataBinder`：Web 数据绑定器，利用里面的 `Converters` 将请求数据转换成指定的数据，并封装到 JavaBean 中
+- ![image.png](images/1603337871521-25fc1aa1-133a-4ce0-a146-d565633d7658.png)
+
+参数转换与绑定：
+
+在将 Request 中的参数键值对取出来后，遍历设置每一个值到 JavaBean 中，利用 `GenericConversionService` 转换参数类型与 JavaBean 中的参数类型一致后再通过反射设置属性值：
+
+```java
+// org.springframework.core.convert.support.GenericConversionService#convert(java.lang.Object, org.springframework.core.convert.TypeDescriptor, org.springframework.core.convert.TypeDescriptor)
+@Override
+@Nullable
+public Object convert(@Nullable Object source, @Nullable TypeDescriptor sourceType, TypeDescriptor targetType) {
+    Assert.notNull(targetType, "Target type to convert to cannot be null");
+    if (sourceType == null) {
+        Assert.isTrue(source == null, "Source must be [null] if source type == [null]");
+        return handleResult(null, targetType, convertNullSource(null, targetType));
+    }
+    if (source != null && !sourceType.getObjectType().isInstance(source)) {
+        throw new IllegalArgumentException("Source to convert from must be an instance of [" +
+                                           sourceType + "]; instead it was a [" + source.getClass().getName() + "]");
+    }
+    // 获取 GenericConverter
+    GenericConverter converter = getConverter(sourceType, targetType);
+    if (converter != null) {
+        // 转换
+        Object result = ConversionUtils.invokeConverter(converter, source, sourceType, targetType);
+        return handleResult(sourceType, targetType, result);
+    }
+    return handleConverterNotFound(source, sourceType, targetType);
+}
+```
+
+`GenericConversionService` 里面持有所有的 `Converter`，的设计模式与 `HandlerMapping` 和参数解析器一样，通过 `for` 循环遍历哪一种 `Converter` 适合当前参数转换并缓存，缓存的 key 便是：`new ConverterCacheKey(sourceTyp, TargetType);`：
+
+```java
+// org.springframework.core.convert.support.GenericConversionService#getConverter
+@Nullable
+protected GenericConverter getConverter(TypeDescriptor sourceType, TypeDescriptor targetType) {
+    ConverterCacheKey key = new ConverterCacheKey(sourceType, targetType);
+    GenericConverter converter = this.converterCache.get(key);
+    if (converter != null) {
+        return (converter != NO_MATCH ? converter : null);
+    }
+
+    // 遍历寻找
+    converter = this.converters.find(sourceType, targetType);
+    if (converter == null) {
+        converter = getDefaultConverter(sourceType, targetType);
+    }
+
+    if (converter != null) {
+        this.converterCache.put(key, converter);
+        return converter;
+    }
+
+    this.converterCache.put(key, NO_MATCH);
+    return null;
+}
+```
+
+遍历找到支持的转换器后，返回的是 `GenericConverter` 对象（String to Number : `GenericConversionService.ConverterFactoryAdapter`）：
+
+```java
+// org.springframework.core.convert.support.GenericConversionService.Converters#find
+@Nullable
+public GenericConverter find(TypeDescriptor sourceType, TypeDescriptor targetType) {
+    // Search the full type hierarchy
+    // 会把 超类 和 所有接口 的类型都拿去比较，尽可能的找
+    List<Class<?>> sourceCandidates = getClassHierarchy(sourceType.getType());
+    List<Class<?>> targetCandidates = getClassHierarchy(targetType.getType());
+    for (Class<?> sourceCandidate : sourceCandidates) {
+        for (Class<?> targetCandidate : targetCandidates) {
+            ConvertiblePair convertiblePair = new ConvertiblePair(sourceCandidate, targetCandidate);
+            // 根据 S & T 获取
+            GenericConverter converter = getRegisteredConverter(sourceType, targetType, convertiblePair);
+            if (converter != null) {
+                return converter;
+            }
+        }
+    }
+    return null;
+}
+```
+
+`getRegisteredConverter`：
+
+```java
+// org.springframework.core.convert.support.GenericConversionService.Converters#getRegisteredConverter
+@Nullable
+private GenericConverter getRegisteredConverter(TypeDescriptor sourceType,
+                                                TypeDescriptor targetType, ConvertiblePair convertiblePair) {
+
+    // Check specifically registered converters
+    // 缓存的全局 Converter
+    ConvertersForPair convertersForPair = this.converters.get(convertiblePair);
+    if (convertersForPair != null) {
+        GenericConverter converter = convertersForPair.getConverter(sourceType, targetType);
+        if (converter != null) {
+            return converter;
+        }
+    }
+    // Check ConditionalConverters for a dynamic match
+    for (GenericConverter globalConverter : this.globalConverters) {
+        if (((ConditionalConverter) globalConverter).matches(sourceType, targetType)) {
+            return globalConverter;
+        }
+    }
+    return null;
+}
+```
+
+- `private final Map<ConvertiblePair, ConvertersForPair> converters = new ConcurrentHashMap<>(256);`
+- ![image.png](images/1603338486441-9bbd22a9-813f-49bd-b51b-e66c7f4b8598.png)
+
+获取到 `GenericConverter` 对象后，通过工具类 `ConversionUtils` 进行转换：`invokeConverter(converter, source, sourceType, targetType)`，得到 JavaBean 需要的类型后，通过反射设置属性值。
+
+寻找时，会把 超类 和 所有接口 的类型都拿去比较，尽可能的找：![image-20220605134316954](images/image-20220605134316954.png)
+
+##### 自定义 Converter
+
+`Converter` 底层是一个接口：`@FunctionalInterface public interface Converter<S, T> {}`。
+
+在“开启矩阵变量”小节我们说过，可以通过在容器中注入 `WebMvcConfigurer` 来达到扩展 Spring MVC 自定义功能的目的！
+
+```java
+@Bean
+public WebMvcConfigurer webMvcConfigurer() {
+    return new WebMvcConfigurer() {
+        /**
+             * 添加自定义 Converter
+             */
+        @Override
+        public void addFormatters(FormatterRegistry registry) {
+            registry.addConverter(new Converter<String, Dog>() {
+                @Override
+                public Dog convert(String source) {
+                    String[] values = source.split(",");
+                    Dog dog = new Dog();
+                    dog.setId(Long.valueOf(values[0]));
+                    dog.setName(values[1]);
+                    return dog;
+                }
+            });
+        }
+    };
+}
+```
+
+
+
+
+
+
+
 
 
 
