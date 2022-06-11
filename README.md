@@ -1213,7 +1213,7 @@ private GenericConverter getRegisteredConverter(TypeDescriptor sourceType,
 
 寻找时，会把 超类 和 所有接口 的类型都拿去比较，尽可能的找：![image-20220605134316954](images/image-20220605134316954.png)
 
-##### 自定义 Converter
+##### 自定义 `Converter`
 
 `Converter` 底层是一个接口：`@FunctionalInterface public interface Converter<S, T> {}`。
 
@@ -1277,7 +1277,607 @@ public Cat cat(Cat cat) {
   - 不加注解: 使用 `ServletModelAttributeMethodProcessor` 解析参数
 - `@RequestParam` 可以搭配自定义 `Converter` 解析参数
 
+### 响应处理及原理
 
+#### 响应 JSON
+
+Spring Boot Web 自动引入了 Jackson：
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-web</artifactId>
+    <version>2.6.7</version>
+</dependency>
+↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-json</artifactId>
+    <version>2.6.7</version>
+    <scope>compile</scope>
+</dependency>
+↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
+<dependency>
+    <groupId>com.fasterxml.jackson.core</groupId>
+    <artifactId>jackson-databind</artifactId>
+    <version>2.13.2.1</version>
+    <scope>compile</scope>
+</dependency>
+<dependency>
+    <groupId>com.fasterxml.jackson.datatype</groupId>
+    <artifactId>jackson-datatype-jdk8</artifactId>
+    <version>2.13.2</version>
+    <scope>compile</scope>
+</dependency>
+<dependency>
+    <groupId>com.fasterxml.jackson.datatype</groupId>
+    <artifactId>jackson-datatype-jsr310</artifactId>
+    <version>2.13.2</version>
+    <scope>compile</scope>
+</dependency>
+<dependency>
+    <groupId>com.fasterxml.jackson.module</groupId>
+    <artifactId>jackson-module-parameter-names</artifactId>
+    <version>2.13.2</version>
+    <scope>compile</scope>
+</dependency>
+```
+
+内置返回值解析器：
+
+![image-20220607211601524](images/image-20220607211601524.png)
+
+#### 底层原理
+
+```java
+// org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod#invokeAndHandle
+public void invokeAndHandle(ServletWebRequest webRequest, ModelAndViewContainer mavContainer,
+                            Object... providedArgs) throws Exception {
+
+    Object returnValue = invokeForRequest(webRequest, mavContainer, providedArgs);
+    
+    // ...
+    
+    try {
+        // 使用返回值解析器处理响应
+        this.returnValueHandlers.handleReturnValue(
+            returnValue, getReturnValueType(returnValue), mavContainer, webRequest);
+    }
+}
+```
+
+也是通过循环遍历获取 `HandlerMethodReturnValueHandler`，看哪个支持当前次请求：
+
+```java
+// org.springframework.web.method.support.HandlerMethodReturnValueHandlerComposite#handleReturnValue
+@Override
+public void handleReturnValue(@Nullable Object returnValue, MethodParameter returnType,
+                              ModelAndViewContainer mavContainer, NativeWebRequest webRequest) throws Exception {
+
+    HandlerMethodReturnValueHandler handler = selectHandler(returnValue, returnType);
+    if (handler == null) {
+        throw new IllegalArgumentException("Unknown return value type: " + returnType.getParameterType().getName());
+    }
+    handler.handleReturnValue(returnValue, returnType, mavContainer, webRequest);
+}
+
+// org.springframework.web.method.support.HandlerMethodReturnValueHandlerComposite#selectHandler
+@Nullable
+private HandlerMethodReturnValueHandler selectHandler(@Nullable Object value, MethodParameter returnType) {
+    boolean isAsyncValue = isAsyncReturnValue(value, returnType);
+    for (HandlerMethodReturnValueHandler handler : this.returnValueHandlers) {
+        if (isAsyncValue && !(handler instanceof AsyncHandlerMethodReturnValueHandler)) {
+            continue;
+        }
+        if (handler.supportsReturnType(returnType)) {
+            return handler;
+        }
+    }
+    return null;
+}
+```
+
+跟踪一下 `RequestResponseBodyMethodProcessor`：
+
+```java
+@Override
+public boolean supportsReturnType(MethodParameter returnType) {
+    return (AnnotatedElementUtils.hasAnnotation(returnType.getContainingClass(), ResponseBody.class) ||
+            returnType.hasMethodAnnotation(ResponseBody.class));
+}
+
+@Override
+public void handleReturnValue(@Nullable Object returnValue, MethodParameter returnType,
+                              ModelAndViewContainer mavContainer, NativeWebRequest webRequest)
+    throws IOException, HttpMediaTypeNotAcceptableException, HttpMessageNotWritableException {
+
+    mavContainer.setRequestHandled(true);
+    ServletServerHttpRequest inputMessage = createInputMessage(webRequest);
+    ServletServerHttpResponse outputMessage = createOutputMessage(webRequest);
+
+    // Try even with null return value. ResponseBodyAdvice could get involved.
+    writeWithMessageConverters(returnValue, returnType, inputMessage, outputMessage);
+}
+```
+
+- 支持 `@ResponseBody` 注解标注的
+- 使用 `MessageConverter` 将响应写出
+
+`RequestResponseBodyMethodProcessor`：
+
+```java
+// org.springframework.web.servlet.mvc.method.annotation.AbstractMessageConverterMethodProcessor#isResourceType
+protected boolean isResourceType(@Nullable Object value, MethodParameter returnType) {
+    Class<?> clazz = getReturnValueType(value, returnType);
+    return clazz != InputStreamResource.class && Resource.class.isAssignableFrom(clazz);
+}
+
+// org.springframework.web.servlet.mvc.method.annotation.AbstractMessageConverterMethodProcessor#writeWithMessageConverters
+protected <T> void writeWithMessageConverters(@Nullable T value, MethodParameter returnType,
+                                              ServletServerHttpRequest inputMessage, ServletServerHttpResponse outputMessage)
+    throws IOException, HttpMediaTypeNotAcceptableException, HttpMessageNotWritableException {
+
+    Object body;
+    Class<?> valueType;
+    Type targetType;
+
+    if (value instanceof CharSequence) {
+        body = value.toString();
+        valueType = String.class;
+        targetType = String.class;
+    }
+    else {
+        body = value;
+        valueType = getReturnValueType(body, returnType);
+        targetType = GenericTypeResolver.resolveType(getGenericType(returnType), returnType.getContainingClass());
+    }
+
+    // 判断是否是 Resource 类
+    if (isResourceType(value, returnType)) {
+        outputMessage.getHeaders().set(HttpHeaders.ACCEPT_RANGES, "bytes");
+        if (value != null && inputMessage.getHeaders().getFirst(HttpHeaders.RANGE) != null &&
+            outputMessage.getServletResponse().getStatus() == 200) {
+            Resource resource = (Resource) value;
+            try {
+                List<HttpRange> httpRanges = inputMessage.getHeaders().getRange();
+                outputMessage.getServletResponse().setStatus(HttpStatus.PARTIAL_CONTENT.value());
+                body = HttpRange.toResourceRegions(httpRanges, resource);
+                valueType = body.getClass();
+                targetType = RESOURCE_REGION_LIST_TYPE;
+            }
+            catch (IllegalArgumentException ex) {
+                outputMessage.getHeaders().set(HttpHeaders.CONTENT_RANGE, "bytes */" + resource.contentLength());
+                outputMessage.getServletResponse().setStatus(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE.value());
+            }
+        }
+    }
+
+    MediaType selectedMediaType = null;
+    MediaType contentType = outputMessage.getHeaders().getContentType();
+    boolean isContentTypePreset = contentType != null && contentType.isConcrete();
+    if (isContentTypePreset) {
+        if (logger.isDebugEnabled()) {
+            logger.debug("Found 'Content-Type:" + contentType + "' in response");
+        }
+        selectedMediaType = contentType;
+    }
+    else {
+        HttpServletRequest request = inputMessage.getServletRequest();
+        // 1. 从 Request 中获取 Accept，浏览器支持接收的返回值类型
+        List<MediaType> acceptableTypes;
+        try {
+            acceptableTypes = getAcceptableMediaTypes(request);
+        }
+        catch (HttpMediaTypeNotAcceptableException ex) {
+            int series = outputMessage.getServletResponse().getStatus() / 100;
+            if (body == null || series == 4 || series == 5) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Ignoring error response content (if any). " + ex);
+                }
+                return;
+            }
+            throw ex;
+        }
+        // 2. 获取服务器支持的返回类型
+        List<MediaType> producibleTypes = getProducibleMediaTypes(request, valueType, targetType);
+
+        if (body != null && producibleTypes.isEmpty()) {
+            throw new HttpMessageNotWritableException(
+                "No converter found for return value of type: " + valueType);
+        }
+        List<MediaType> mediaTypesToUse = new ArrayList<>();
+        // 3. 匹配（协商）出两端都支持的返回类型
+        for (MediaType requestedType : acceptableTypes) {
+            for (MediaType producibleType : producibleTypes) {
+                if (requestedType.isCompatibleWith(producibleType)) {
+                    mediaTypesToUse.add(getMostSpecificMediaType(requestedType, producibleType));
+                }
+            }
+        }
+        if (mediaTypesToUse.isEmpty()) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("No match for " + acceptableTypes + ", supported: " + producibleTypes);
+            }
+            if (body != null) {
+                throw new HttpMediaTypeNotAcceptableException(producibleTypes);
+            }
+            return;
+        }
+
+        // 4. 找出最合适的返回类型
+        MediaType.sortBySpecificityAndQuality(mediaTypesToUse);
+
+        for (MediaType mediaType : mediaTypesToUse) {
+            if (mediaType.isConcrete()) {
+                selectedMediaType = mediaType;
+                break;
+            }
+            else if (mediaType.isPresentIn(ALL_APPLICATION_MEDIA_TYPES)) {
+                selectedMediaType = MediaType.APPLICATION_OCTET_STREAM;
+                break;
+            }
+        }
+
+        if (logger.isDebugEnabled()) {
+            logger.debug("Using '" + selectedMediaType + "', given " +
+                         acceptableTypes + " and supported " + producibleTypes);
+        }
+    }
+
+    if (selectedMediaType != null) {
+        selectedMediaType = selectedMediaType.removeQualityValue();
+        // 5. 遍历所有的 HttpMessageConverter
+        for (HttpMessageConverter<?> converter : this.messageConverters) {
+            GenericHttpMessageConverter genericConverter = (converter instanceof GenericHttpMessageConverter ?
+                                                            (GenericHttpMessageConverter<?>) converter : null);
+            // 5.1 判断当前 HttpMessageConverter 能否对当前的响应数据进行“写”
+            if (genericConverter != null ?
+                ((GenericHttpMessageConverter) converter).canWrite(targetType, valueType, selectedMediaType) :
+                converter.canWrite(valueType, selectedMediaType)) {
+                // 5.2 使用 HttpMessageConverter 写出响应
+                body = getAdvice().beforeBodyWrite(body, returnType, selectedMediaType,
+                                                   (Class<? extends HttpMessageConverter<?>>) converter.getClass(),
+                                                   inputMessage, outputMessage);
+                if (body != null) {
+                    Object theBody = body;
+                    LogFormatUtils.traceDebug(logger, traceOn ->
+                                              "Writing [" + LogFormatUtils.formatValue(theBody, !traceOn) + "]");
+                    addContentDispositionHeader(inputMessage, outputMessage);
+                    if (genericConverter != null) {
+                        genericConverter.write(body, targetType, selectedMediaType, outputMessage);
+                    }
+                    else {
+                        ((HttpMessageConverter) converter).write(body, selectedMediaType, outputMessage);
+                    }
+                }
+                else {
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Nothing to write: null body");
+                    }
+                }
+                return;
+            }
+        }
+    }
+
+    if (body != null) {
+        Set<MediaType> producibleMediaTypes =
+            (Set<MediaType>) inputMessage.getServletRequest()
+            .getAttribute(HandlerMapping.PRODUCIBLE_MEDIA_TYPES_ATTRIBUTE);
+
+        if (isContentTypePreset || !CollectionUtils.isEmpty(producibleMediaTypes)) {
+            throw new HttpMessageNotWritableException(
+                "No converter for [" + valueType + "] with preset Content-Type '" + contentType + "'");
+        }
+        throw new HttpMediaTypeNotAcceptableException(getSupportedMediaTypes(body.getClass()));
+    }
+}
+```
+
+1. 从 Request 中获取 Accept，浏览器支持接收的返回值类型
+2. 获取服务器支持的返回类型
+3. 匹配（协商）出两端都支持的返回类型
+4. 找出最合适的返回类型
+5. 使用 `HttpMessageConverter` 写出响应
+   1. 判断当前 `HttpMessageConverter` 能否对当前的响应数据进行“写”
+   2. 使用 `HttpMessageConverter` 写出响应
+
+`HttpMessageConverter`：
+
+![image-20220607220801580](images/image-20220607220801580.png)
+
+主要是两个工作：
+
+- 能否支持当前类型和当前媒体类型
+- 进行内容转换
+
+Spring Boot 内置的 `HttpMessageConverter`：
+
+![image-20220607220948134](images/image-20220607220948134.png)
+
+其中，`MappingJackson2HttpMessageConverter` 支持 JSON 类型写：
+
+```java
+public MappingJackson2HttpMessageConverter(ObjectMapper objectMapper) {
+    super(objectMapper, MediaType.APPLICATION_JSON, new MediaType("application", "*+json"));
+}
+```
+
+- application/json
+- application/*+json
+
+底层便是使用 Jackson 将对象转为 JSON 字符串：
+
+```java
+// org.springframework.http.converter.json.AbstractJackson2HttpMessageConverter#writeInternal
+@Override
+protected void writeInternal(Object object, @Nullable Type type, HttpOutputMessage outputMessage)
+    throws IOException, HttpMessageNotWritableException {
+
+    MediaType contentType = outputMessage.getHeaders().getContentType();
+    JsonEncoding encoding = getJsonEncoding(contentType);
+
+    Class<?> clazz = (object instanceof MappingJacksonValue ?
+                      ((MappingJacksonValue) object).getValue().getClass() : object.getClass());
+    ObjectMapper objectMapper = selectObjectMapper(clazz, contentType);
+
+    // ...
+}
+```
+
+#### 内容协商原理：MediaType
+
+通过上一节的梳理，应该不用再过多介绍了吧？
+
+主要就是请求头 Accept 接受的 MediaType 和 Controller 返回值支持的 MediaType，取两者最佳，再通过支持该最佳 MediaType 的 `MessageConverter` 将数据写出到响应中。
+
+`List<MediaType> acceptableTypes = getAcceptableMediaTypes(request);`：
+
+```java
+// org.springframework.web.servlet.mvc.method.annotation.AbstractMessageConverterMethodProcessor#getAcceptableMediaTypes
+private List<MediaType> getAcceptableMediaTypes(HttpServletRequest request)
+    throws HttpMediaTypeNotAcceptableException {
+
+    return this.contentNegotiationManager.resolveMediaTypes(new ServletWebRequest(request));
+}
+↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
+// org.springframework.web.accept.ContentNegotiationManager#resolveMediaTypes
+@Override
+public List<MediaType> resolveMediaTypes(NativeWebRequest request) throws HttpMediaTypeNotAcceptableException {
+    for (ContentNegotiationStrategy strategy : this.strategies) {
+        List<MediaType> mediaTypes = strategy.resolveMediaTypes(request);
+        if (mediaTypes.equals(MEDIA_TYPE_ALL_LIST)) {
+            continue;
+        }
+        // 注意：找到了便直接返回，不会遍历所有策略
+        return mediaTypes;
+    }
+    return MEDIA_TYPE_ALL_LIST;
+}
+```
+
+- 默认情况下 `this.strategies` 只有一种策略：`HeaderContentNegotiationStrategy`
+- 内置的 `ContentNegotiationStrategy`：![image-20220608222548455](images/image-20220608222548455.png)
+- ==**注意：找到了便直接返回，不会遍历所有策略**==
+
+#### 基于请求参数的内容协商
+
+```yaml
+spring:
+  mvc:
+    contentnegotiation:
+      favor-parameter: true
+```
+
+**http://localhost:8080/dog?`format=xml`**
+
+**http://localhost:8080/dog?`format=json`**
+
+配置 `favor-parameter: true` 后，会自动添加一种策略 `ParameterContentNegotiationStrategy`：
+
+```java
+public class ParameterContentNegotiationStrategy extends AbstractMappingContentNegotiationStrategy {
+
+	private String parameterName = "format";
+
+
+	/**
+	 * Create an instance with the given map of file extensions and media types.
+	 */
+	public ParameterContentNegotiationStrategy(Map<String, MediaType> mediaTypes) {
+		super(mediaTypes);
+	}
+
+
+	/**
+	 * Set the name of the parameter to use to determine requested media types.
+	 * <p>By default this is set to {@code "format"}.
+	 */
+	public void setParameterName(String parameterName) {
+		Assert.notNull(parameterName, "'parameterName' is required");
+		this.parameterName = parameterName;
+	}
+
+	public String getParameterName() {
+		return this.parameterName;
+	}
+    
+    // ...
+}
+```
+
+- 可以看到，默认参数名称：`parameterName = "format"`
+- 也可以自己指定参数名称
+
+原理便是在 `ContentNegotiationManagerFactoryBean#build()`：
+
+```java
+// org.springframework.web.accept.ContentNegotiationManagerFactoryBean#build
+public ContentNegotiationManager build() {
+    List<ContentNegotiationStrategy> strategies = new ArrayList<>();
+
+    if (this.strategies != null) {
+        strategies.addAll(this.strategies);
+    }
+    else {
+        if (this.favorPathExtension) {
+            PathExtensionContentNegotiationStrategy strategy;
+            if (this.servletContext != null && !useRegisteredExtensionsOnly()) {
+                strategy = new ServletPathExtensionContentNegotiationStrategy(this.servletContext, this.mediaTypes);
+            }
+            else {
+                strategy = new PathExtensionContentNegotiationStrategy(this.mediaTypes);
+            }
+            strategy.setIgnoreUnknownExtensions(this.ignoreUnknownPathExtensions);
+            if (this.useRegisteredExtensionsOnly != null) {
+                strategy.setUseRegisteredExtensionsOnly(this.useRegisteredExtensionsOnly);
+            }
+            strategies.add(strategy);
+        }
+        if (this.favorParameter) {
+            ParameterContentNegotiationStrategy strategy = new ParameterContentNegotiationStrategy(this.mediaTypes);
+            strategy.setParameterName(this.parameterName);
+            if (this.useRegisteredExtensionsOnly != null) {
+                strategy.setUseRegisteredExtensionsOnly(this.useRegisteredExtensionsOnly);
+            }
+            else {
+                strategy.setUseRegisteredExtensionsOnly(true);  // backwards compatibility
+            }
+            strategies.add(strategy);
+        }
+        if (!this.ignoreAcceptHeader) {
+            strategies.add(new HeaderContentNegotiationStrategy());
+        }
+        if (this.defaultNegotiationStrategy != null) {
+            strategies.add(this.defaultNegotiationStrategy);
+        }
+    }
+
+    this.contentNegotiationManager = new ContentNegotiationManager(strategies);
+
+    // Ensure media type mappings are available via ContentNegotiationManager#getMediaTypeMappings()
+    // independent of path extension or parameter strategies.
+
+    if (!CollectionUtils.isEmpty(this.mediaTypes) && !this.favorPathExtension && !this.favorParameter) {
+        this.contentNegotiationManager.addFileExtensionResolvers(
+            new MappingMediaTypeFileExtensionResolver(this.mediaTypes));
+    }
+
+    return this.contentNegotiationManager;
+}
+```
+
+- 添加一种策略：
+
+- `ParameterContentNegotiationStrategy strategy = new ParameterContentNegotiationStrategy(this.mediaTypes);`
+
+- 它的原理便是获取参数 `format` 的值再去 Map 中获取对应的 MediaType：
+
+  ```java
+  // org.springframework.web.accept.MappingMediaTypeFileExtensionResolver
+  public class MappingMediaTypeFileExtensionResolver implements MediaTypeFileExtensionResolver {
+  
+      // 缓存映射
+  	private final ConcurrentMap<String, MediaType> mediaTypes = new ConcurrentHashMap<>(64);
+      
+      // ...
+  }
+  ```
+
+- Map 中存放的映射关系便是绝对重点，其初始化便是在：
+
+  ```java
+  // org.springframework.web.servlet.config.annotation.WebMvcConfigurationSupport#mvcContentNegotiationManager
+  @Bean
+  public ContentNegotiationManager mvcContentNegotiationManager() {
+      if (this.contentNegotiationManager == null) {
+          ContentNegotiationConfigurer configurer = new ContentNegotiationConfigurer(this.servletContext);
+          // 获取并注册默认的 Map 映射关系
+          configurer.mediaTypes(getDefaultMediaTypes());
+          configureContentNegotiation(configurer);
+          this.contentNegotiationManager = configurer.buildContentNegotiationManager();
+      }
+      return this.contentNegotiationManager;
+  }
+  
+  // org.springframework.web.servlet.config.annotation.WebMvcConfigurationSupport#getDefaultMediaTypes
+  protected Map<String, MediaType> getDefaultMediaTypes() {
+      Map<String, MediaType> map = new HashMap<>(4);
+      if (romePresent) {
+          map.put("atom", MediaType.APPLICATION_ATOM_XML);
+          map.put("rss", MediaType.APPLICATION_RSS_XML);
+      }
+      if (!shouldIgnoreXml && (jaxb2Present || jackson2XmlPresent)) {
+          map.put("xml", MediaType.APPLICATION_XML);
+      }
+      if (jackson2Present || gsonPresent || jsonbPresent) {
+          map.put("json", MediaType.APPLICATION_JSON);
+      }
+      if (jackson2SmilePresent) {
+          map.put("smile", MediaType.valueOf("application/x-jackson-smile"));
+      }
+      if (jackson2CborPresent) {
+          map.put("cbor", MediaType.APPLICATION_CBOR);
+      }
+      return map;
+  }
+  ```
+
+  - `configurer.mediaTypes(getDefaultMediaTypes());`：获取并注册默认的 Map 映射关系
+
+#### 自定义 `HttpMessageConverter`
+
+`HttpMessageConverter` 底层是一个 `public interface HttpMessageConverter<T> {}`，同样我们使用 `WebMvcConfigurer` 来达到扩展 Spring MVC 自定义功能的目的！
+
+```java
+@Bean
+public WebMvcConfigurer webMvcConfigurer() {
+    return new WebMvcConfigurer() {
+        /**
+         * 添加自定义 HttpMessageConverter
+         */
+        @Override
+        public void extendMessageConverters(List<HttpMessageConverter<?>> converters) {
+            converters.add(new AlbrusHttpMessageConverter());
+        }
+    };
+}
+```
+
+#### 基于请求参数的内容协商与自定义 `HttpMessageConverter`
+
+重点便是在缓存映射中存放关键字与 MediaType 的映射关系，例如：`xml -> application/xml`：
+
+```java
+// org.springframework.boot.autoconfigure.web.servlet.WebMvcAutoConfiguration.WebMvcAutoConfigurationAdapter#configureContentNegotiation
+@Override
+public void configureContentNegotiation(ContentNegotiationConfigurer configurer) {
+    WebMvcProperties.Contentnegotiation contentnegotiation = this.mvcProperties.getContentnegotiation();
+    configurer.favorPathExtension(contentnegotiation.isFavorPathExtension());
+    configurer.favorParameter(contentnegotiation.isFavorParameter());
+    if (contentnegotiation.getParameterName() != null) {
+        configurer.parameterName(contentnegotiation.getParameterName());
+    }
+    // 从 this.mvcProperties 获取配置的映射关系
+    Map<String, MediaType> mediaTypes = this.mvcProperties.getContentnegotiation().getMediaTypes();
+    mediaTypes.forEach(configurer::mediaType);
+}
+```
+
+- `Map<String, MediaType> mediaTypes = this.mvcProperties.getContentnegotiation().getMediaTypes();`
+
+- 如此一来，可以在 `application.yaml` 文件中配置映射关系即可：
+
+  ```yaml
+  spring:
+    mvc:
+      contentnegotiation:
+        favor-parameter: true
+        media-types:
+          albrus: application/albrus
+  ```
+
+  
 
 
 

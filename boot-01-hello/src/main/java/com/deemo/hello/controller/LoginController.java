@@ -4,6 +4,7 @@ import com.deemo.hello.bean.Cat;
 import com.deemo.hello.bean.Dog;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -38,8 +39,19 @@ public class LoginController {
 
 	@RequestParam 可以搭配自定义 Converter 解析参数
 	 */
+	@ResponseBody
 	@GetMapping("/cat")
 	public Cat cat(Cat cat) {
+		System.out.println("My cat: " + cat);
+
+		return cat;
+	}
+
+	@GetMapping("/cat2")
+	public Cat cat2() {
+		Cat cat = new Cat();
+		cat.setId(12345678L);
+		cat.setName("狗狗");
 		System.out.println("My cat: " + cat);
 
 		return cat;

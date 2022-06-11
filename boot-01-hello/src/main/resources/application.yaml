@@ -1,6 +1,13 @@
 server:
   port: 8080
 
+spring:
+  mvc:
+    contentnegotiation:
+      favor-parameter: true
+      media-types:
+        albrus: application/albrus
+
 albrus:
   id: 1
   name: "猪🐖"
