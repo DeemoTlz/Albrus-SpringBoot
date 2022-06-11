@@ -1877,7 +1877,95 @@ public void configureContentNegotiation(ContentNegotiationConfigurer configurer)
           albrus: application/albrus
   ```
 
-  
+### 拦截器
+
+拦截器原理便是在 `doDispatch()` 的过程中做的三个前中后操作，比较简单：
+
+```java
+// org.springframework.web.servlet.DispatcherServlet#doDispatch
+protected void doDispatch(HttpServletRequest request, HttpServletResponse response) throws Exception {
+    try {
+        try {
+            processedRequest = checkMultipart(request);
+            multipartRequestParsed = (processedRequest != request);
+
+            // Determine handler for the current request.
+            mappedHandler = getHandler(processedRequest);
+            if (mappedHandler == null) {
+                noHandlerFound(processedRequest, response);
+                return;
+            }
+
+            // Determine handler adapter for the current request.
+            HandlerAdapter ha = getHandlerAdapter(mappedHandler.getHandler());
+
+            // ...
+
+            // 1. applyPreHandle
+            if (!mappedHandler.applyPreHandle(processedRequest, response)) {
+                return;
+            }
+
+            // Actually invoke the handler.
+            mv = ha.handle(processedRequest, response, mappedHandler.getHandler());
+
+            if (asyncManager.isConcurrentHandlingStarted()) {
+                return;
+            }
+
+            applyDefaultViewName(processedRequest, mv);
+            // 2. applyPostHandle
+            mappedHandler.applyPostHandle(processedRequest, response, mv);
+        }
+        catch (Exception ex) {
+            dispatchException = ex;
+        }
+        catch (Throwable err) {
+            // As of 4.3, we're processing Errors thrown from handler methods as well,
+            // making them available for @ExceptionHandler methods and other scenarios.
+            dispatchException = new NestedServletException("Handler dispatch failed", err);
+        }
+        // 3. afterCompletion
+        processDispatchResult(processedRequest, response, mappedHandler, mv, dispatchException);
+    } catch (Exception ex) {
+        // 3. afterCompletion
+        triggerAfterCompletion(processedRequest, response, mappedHandler, ex);
+    } catch (Throwable err) {
+        // 3. afterCompletion
+        triggerAfterCompletion(processedRequest, response, mappedHandler,
+                               new NestedServletException("Handler processing failed", err));
+    } finally {...}
+}
+```
+
+- `mappedHandler.applyPreHandle(processedRequest, response)`
+  - 1 2 3 的顺序进入
+  - `preHandle` 中一旦有 `false` 的拦截器，会直接触发 `triggerAfterCompletion`
+- `mappedHandler.applyPostHandle(processedRequest, response, mv);`
+  - 3 2 1 的顺序出去
+- `processDispatchResult(processedRequest, response, mappedHandler, mv, dispatchException); / triggerAfterCompletion(processedRequest, response, mappedHandler, ex);`
+  - 3 2 1 的顺序出去
+
+其通过 `interceptorIndex` 记录执行到了哪个拦截器：
+
+```java
+boolean applyPreHandle(HttpServletRequest request, HttpServletResponse response) throws Exception {
+    for (int i = 0; i < this.interceptorList.size(); i++) {
+        HandlerInterceptor interceptor = this.interceptorList.get(i);
+        if (!interceptor.preHandle(request, response, this.handler)) {
+            triggerAfterCompletion(request, response, null);
+            return false;
+        }
+        // 记录执行到了哪个拦截器
+        this.interceptorIndex = i;
+    }
+    return true;
+}
+```
+
+- ==**总结：一定会执行已经执行过 `applyPreHandle` 的拦截器的 `afterCompletion`**==
+
+
 
 
 
