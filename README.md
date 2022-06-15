@@ -421,21 +421,29 @@ Annotation Processor：`spring-boot-configuration-processor`
 
 ### 接管 Spring MVC
 
-If you want to keep those Spring Boot MVC customizations and make more [MVC customizations](https://docs.spring.io/spring/docs/5.2.9.RELEASE/spring-framework-reference/web.html#mvc) (interceptors, formatters, view controllers, and other features), you can add your own `@Configuration` class of type `WebMvcConfigurer` but **without** `@EnableWebMvc`.
+1. **不用 `@EnableWebMvc` 注解。使用 `@Configuration` + `WebMvcConfigurer` 自定义规则**
 
-**不用 `@EnableWebMvc` 注解。使用 `@Configuration` + `WebMvcConfigurer` 自定义规则。**
+   > If you want to keep those Spring Boot MVC customizations and make more [MVC customizations](https://docs.spring.io/spring/docs/5.2.9.RELEASE/spring-framework-reference/web.html#mvc) (interceptors, formatters, view controllers, and other features), you can add your own `@Configuration` class of type `WebMvcConfigurer` but **without** `@EnableWebMvc`.
 
+2. **声明 `WebMvcRegistrations` 改变默认底层组件，自定义 `RequestMappingHandlerMapping`**
 
+   > If you want to provide custom instances of `RequestMappingHandlerMapping`, `RequestMappingHandlerAdapter`, or `ExceptionHandlerExceptionResolver`, and still keep the Spring Boot MVC customizations, you can declare a bean of type `WebMvcRegistrations` and use it to provide custom instances of those components.
 
-If you want to provide custom instances of `RequestMappingHandlerMapping`, `RequestMappingHandlerAdapter`, or `ExceptionHandlerExceptionResolver`, and still keep the Spring Boot MVC customizations, you can declare a bean of type `WebMvcRegistrations` and use it to provide custom instances of those components.
+3. **使用 `@EnableWebMvc + @Configuration+DelegatingWebMvcConfiguration` 全面接管Spring MVC**
 
-**声明 `WebMvcRegistrations` 改变默认底层组件。**
+   > If you want to take complete control of Spring MVC, you can add your own `@Configuration` annotated with `@EnableWebMvc`, or alternatively add your own `@Configuration`-annotated `DelegatingWebMvcConfiguration` as described in the Javadoc of `@EnableWebMvc`.
 
+   一旦使用 `@EnableWebMvc`，会自动导入 `DelegatingWebMvcConfiguration`，该配置类继承于 `WebMvcConfigurationSupport`；而 `WebMvcAutoConfiguration` 的一大条件便是 `@ConditionalOnMissingBean(WebMvcConfigurationSupport.class)`，所以 MVC 的自动配置不会生效，将由我们全面接管 Spring MVC。
 
+   `DelegatingWebMvcConfiguration` 的作用：Spring Boot 会获取容器中的所有 `WebMvcConfigurer` 接口类型的实例对象，在合适的时候调用接口中的方法用以扩展 Spring Boot 底层内置的组件。
 
-If you want to take complete control of Spring MVC, you can add your own `@Configuration` annotated with `@EnableWebMvc`, or alternatively add your own `@Configuration`-annotated `DelegatingWebMvcConfiguration` as described in the Javadoc of `@EnableWebMvc`.
+   `WebMvcAutoConfiguration` 中也有一个该类型的静态内部类实现：
 
-**使用 `@EnableWebMvc + @Configuration+DelegatingWebMvcConfiguration` 全面接管Spring MVC。**
+   ```java
+   @Configuration(proxyBeanMethods = false)
+   @EnableConfigurationProperties(WebProperties.class)
+   public static class EnableWebMvcConfiguration extends DelegatingWebMvcConfiguration implements ResourceLoaderAware {...}
+   ```
 
 ### 基础功能分析
 
@@ -601,6 +609,23 @@ private void initHandlerMappings(ApplicationContext context) {
 #### 常用注解
 
 `@PathVariable、@RequestHeader、@ModelAttribute、@RequestParam、@MatrixVariable、@CookieValue、@RequestBody`
+
+- `@RequestParam`：可用来获取表单提交中的单个参数
+
+  ```java
+  /**
+   * Content-Type: application/x-www-form-urlencoded
+   * 可以用 @RequestParam 接收
+   */
+  @PostMapping("/dog2")
+  public Dog dog2(@RequestParam String name) {
+      System.out.println("My dog: " + name);
+      Dog dog = new Dog();
+      dog.setName(name);
+  
+      return dog;
+  }
+  ```
 
 #### 不常用注解
 
@@ -1964,6 +1989,292 @@ boolean applyPreHandle(HttpServletRequest request, HttpServletResponse response)
 ```
 
 - ==**总结：一定会执行已经执行过 `applyPreHandle` 的拦截器的 `afterCompletion`**==
+
+### 文件参数解析器
+
+#### 自动注册
+
+```java
+@Configuration(proxyBeanMethods = false)
+@ConditionalOnClass({ Servlet.class, StandardServletMultipartResolver.class, MultipartConfigElement.class })
+@ConditionalOnProperty(prefix = "spring.servlet.multipart", name = "enabled", matchIfMissing = true)
+@ConditionalOnWebApplication(type = Type.SERVLET)
+@EnableConfigurationProperties(MultipartProperties.class)
+public class MultipartAutoConfiguration {
+
+	private final MultipartProperties multipartProperties;
+    
+    @Bean(name = DispatcherServlet.MULTIPART_RESOLVER_BEAN_NAME)
+    @ConditionalOnMissingBean(MultipartResolver.class)
+    public StandardServletMultipartResolver multipartResolver() {
+        StandardServletMultipartResolver multipartResolver = new StandardServletMultipartResolver();
+        multipartResolver.setResolveLazily(this.multipartProperties.isResolveLazily());
+        return multipartResolver;
+    }
+    
+}
+```
+
+- 参数绑定：`spring.servlet.multipart -> MultipartProperties`
+- 自动注册参数解析器：`StandardServletMultipartResolver`
+
+#### 参数接收
+
+`@RequestPart`，原理不再赘述。
+
+### 异常/错误处理
+
+Spring Boot 默认内置了异常处理机制：
+
+1. 浏览器客户端：返回一个叫做白页的错误信息展示页面
+2. 客户端：返回 JSON 响应
+
+默认的异常解析器
+
+![image-20220612205819071](images/image-20220612205819071.png)
+
+- `DefaultErrorAttributes`：先处理异常，把异常信息保存到 `Request` 域，并且返回 NULL
+
+- `HandlerExceptionResolverComposite`：包含三个注解的对应解析器
+
+  开发中经常使用的全局异常处理器的原理与其他模块设计雷同，其中全局异常处理器（`@ExceptionHandler`）是使用 `ExeceptionHandlerExceptionResolve` 来处理的
+
+**如果没有人能处理异常，则会继续抛出异常**，底层便会发送 `/error` 请求，被内置的 `BasicErrorController` 处理：![image-20220612211253717](images/image-20220612211253717.png)
+
+`resolveErrorView`：遍历所有的 `ErrorViewResolve` 处理异常，默认内置了一个 `DefaultErrorViewResolver`：![image-20220612211639208](images/image-20220612211639208.png)
+
+- 如果发生错误，会以HTTP的状态码 作为视图页地址（viewName），找到真正的页面：error/404、5xx.html
+
+也可以内置自定义的异常解析处理器：
+
+```java
+@Component
+public class AlbrusHandlerExceptionResolver implements HandlerExceptionResolver {...}
+```
+
+- **自定义的异常解析处理器请注意排序！**
+
+`ErrorViewResolver`：
+
+- `response.sendError(511, "error message")`：会被自动转到 `/error`
+- 异常不能被任何处理器处理，会被自动转到 `/error`：也是 `sendError()`
+- `BasicErrorController` 想要去的页面，是由 `ErrorViewResolver` 解析出来的
+
+### Web 原生组件
+
+> Servlet、Filter、Listener
+
+#### @WebXxxx
+
+使用注解注入原生组件，前提是==**需要配置包扫描路径**==：`@ServletComponentScan(basePackages = "com.albrus")`
+
+- `@WebServlet(urlPatterns = "/albrus")`
+
+  直接响应，**不会经过Spring的拦截器** -> 原理便是 `DispatcherServlet` 默认注册的是 `/` 路径，根据**最佳路径匹配原则**，不会进入 Spring MVC 的流程。
+
+- `@WebFilter(urlPatterns={"/css/*", "/images/*"})`
+
+- `@WebListener`
+
+#### RegistrationBean
+
+如果不是特别必要，可以使用各个 `RegistrationBean` 来注册原生组件：
+
+- `ServletRegistrationBean`
+- `FilterRegistrationBean`
+- `ServletListenerRegistrationBean`
+
+### 嵌入式 Servlet 容器
+
+#### 切换
+
+默认支持的 Web Server：`Tomcat`, `Jetty`, `Undertow`
+
+原理：`ServletWebServerApplicationContext` 容器启动寻找 `ServletWebServerFactory` 并引导创建服务器。
+
+切换服务器只需要修改 pom GAV 引用即可。
+
+#### 原理
+
+1. Spring Boot 发现当前是 Web 环境，会创建一个 `ServletWebServerApplicationContext` 容器
+
+2. 该容器在启动的时候会创建一个 `webServer`：
+
+   ```java
+   // org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext#createWebServer
+   @Override
+   protected void onRefresh() {
+       super.onRefresh();
+       try {
+           createWebServer();
+       }
+       catch (Throwable ex) {
+           throw new ApplicationContextException("Unable to start web server", ex);
+       }
+   }
+   ```
+
+3. 创建 `webServer` 时，先获取 `ServletWebServerFactory`，通过工厂生成 `WebServer`：
+
+   ```java
+   private void createWebServer() {
+       WebServer webServer = this.webServer;
+       ServletContext servletContext = getServletContext();
+       if (webServer == null && servletContext == null) {
+           StartupStep createWebServer = this.getApplicationStartup().start("spring.boot.webserver.create");
+           // 获取 ServletWebServerFactory
+           ServletWebServerFactory factory = getWebServerFactory();
+           createWebServer.tag("factory", factory.getClass().toString());
+           // 通过工厂生成 WebServer
+           this.webServer = factory.getWebServer(getSelfInitializer());
+           createWebServer.end();
+           // 生命周期相关 Bean
+           getBeanFactory().registerSingleton("webServerGracefulShutdown",
+                                              new WebServerGracefulShutdownLifecycle(this.webServer));
+           getBeanFactory().registerSingleton("webServerStartStop",
+                                              new WebServerStartStopLifecycle(this, this.webServer));
+       }
+       else if (servletContext != null) {
+           try {
+               getSelfInitializer().onStartup(servletContext);
+           }
+           catch (ServletException ex) {
+               throw new ApplicationContextException("Cannot initialize servlet context", ex);
+           }
+       }
+       initPropertySources();
+   }
+   ```
+
+4. Spring Boot 内置提供的 `ServletWebServerFactory`：
+
+   ![image-20220613222258190](images/image-20220613222258190.png)
+
+5. Spring Boot 底层提供一个 `ServletWebServerFactoryAutoConfiguration` 自动配置类：
+
+   ```java
+   @Configuration(proxyBeanMethods = false)
+   @AutoConfigureOrder(Ordered.HIGHEST_PRECEDENCE)
+   @ConditionalOnClass(ServletRequest.class)
+   @ConditionalOnWebApplication(type = Type.SERVLET)
+   @EnableConfigurationProperties(ServerProperties.class)
+   @Import({ ServletWebServerFactoryAutoConfiguration.BeanPostProcessorsRegistrar.class,
+   		ServletWebServerFactoryConfiguration.EmbeddedTomcat.class,
+   		ServletWebServerFactoryConfiguration.EmbeddedJetty.class,
+   		ServletWebServerFactoryConfiguration.EmbeddedUndertow.class })
+   public class ServletWebServerFactoryAutoConfiguration {...}
+   ```
+
+   - 会导入几个 `ServletWebServerFactoryConfiguration` 配置类
+   - `ServletWebServerFactoryConfiguration.EmbeddedTomcat.class` 等便是根据当前环境注入内置的 Server 容器
+
+6. Spring Boot 默认内置 `ServletWebServerFactoryConfiguration.EmbeddedTomcat`，也就是 `TomcatServletWebServerFactory`
+
+   - 那么第三步中的工厂便是：`TomcatServletWebServerFactory`
+   - `WebServer` 便是：`org.springframework.boot.web.embedded.tomcat.TomcatWebServer`
+
+7. 创建 `TomcatWebServer` 时，会先创建 `org.apache.catalina.startup.Tomcat`：
+
+   ```java
+   @Override
+   public WebServer getWebServer(ServletContextInitializer... initializers) {
+       if (this.disableMBeanRegistry) {
+           Registry.disableRegistry();
+       }
+       // 创建 Tomcat
+       Tomcat tomcat = new Tomcat();
+       File baseDir = (this.baseDirectory != null) ? this.baseDirectory : createTempDir("tomcat");
+       tomcat.setBaseDir(baseDir.getAbsolutePath());
+       for (LifecycleListener listener : this.serverLifecycleListeners) {
+           tomcat.getServer().addLifecycleListener(listener);
+       }
+       Connector connector = new Connector(this.protocol);
+       connector.setThrowOnFailure(true);
+       tomcat.getService().addConnector(connector);
+       customizeConnector(connector);
+       tomcat.setConnector(connector);
+       tomcat.getHost().setAutoDeploy(false);
+       configureEngine(tomcat.getEngine());
+       for (Connector additionalConnector : this.additionalTomcatConnectors) {
+           tomcat.getService().addConnector(additionalConnector);
+       }
+       prepareContext(tomcat.getHost(), initializers);
+       // 再用 TomcatWebServer 包裹
+       return getTomcatWebServer(tomcat);
+   }
+   ```
+
+8. 生成 `TomcatWebServer` 时，会持有创建的 `Tomcat`，在 `TomcatWebServer` 的构造方法中执行初始化方法启动 `Tomcat`：
+
+   ```java
+   // org.springframework.boot.web.embedded.tomcat.TomcatWebServer#TomcatWebServer
+   public TomcatWebServer(Tomcat tomcat, boolean autoStart, Shutdown shutdown) {
+       Assert.notNull(tomcat, "Tomcat Server must not be null");
+       this.tomcat = tomcat;
+       this.autoStart = autoStart;
+       this.gracefulShutdown = (shutdown == Shutdown.GRACEFUL) ? new GracefulShutdown(tomcat) : null;
+       initialize();
+   }
+   
+   private void initialize() throws WebServerException {
+       logger.info("Tomcat initialized with port(s): " + getPortsDescription(false));
+       synchronized (this.monitor) {
+           try {
+               addInstanceIdToEngineName();
+   
+               Context context = findContext();
+               context.addLifecycleListener((event) -> {
+                   if (context.equals(event.getSource()) && Lifecycle.START_EVENT.equals(event.getType())) {
+                       // Remove service connectors so that protocol binding doesn't
+                       // happen when the service is started.
+                       removeServiceConnectors();
+                   }
+               });
+   
+               // Start the server to trigger initialization listeners
+               this.tomcat.start();
+   
+               // We can re-throw failure exception directly in the main thread
+               rethrowDeferredStartupExceptions();
+   
+               try {
+                   ContextBindings.bindClassLoader(context, context.getNamingToken(), getClass().getClassLoader());
+               }
+               catch (NamingException ex) {
+                   // Naming is not enabled. Continue
+               }
+   
+               // Unlike Jetty, all Tomcat threads are daemon threads. We create a
+               // blocking non-daemon to stop immediate shutdown
+               startDaemonAwaitThread();
+           }
+           catch (Exception ex) {
+               stopSilently();
+               destroySilently();
+               throw new WebServerException("Unable to start embedded Tomcat", ex);
+           }
+       }
+   }
+   ```
+
+#### 自定义
+
+1. 实现 `WebServerFactoryCustomizer<ConfigurableServletWebServerFactory> `
+
+   - `XxxxCustomizer`：用于修改要导入的 Bean 的相关属性
+   - Spring Boot 默认内置了一个 `ServletWebServerFactoryCustomizer`，作用是将 `server.xxx` 配置属性与 `WebServerFactory` 绑定
+
+2. 修改配置文件 `server.xxx`
+
+   前两种方式都是对 Spring Boot 底层自动生成的 `WebServerFactory` 相关属性进行修改。
+
+3. 实现 `ConfigurableServletWebServerFactory`
+
+   完全由自己实现 `WebServerFactory`。
+
+
+
+
 
 
 
