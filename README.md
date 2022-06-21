@@ -4,7 +4,7 @@
 >
 > https://docs.spring.io/spring-boot/docs/current/reference/htmlsingle/
 
-## 时代背景
+## 一、时代背景
 
 Spring Boot makes it easy to create stand-alone, production-grade Spring based Applications that you can "just run".
 
@@ -71,11 +71,11 @@ Spring Boot makes it easy to create stand-alone, production-grade Spring based A
 - 流量治理
 - ......
 
-## 依赖管理
+## 二、依赖管理
 
 > 自动管理依赖版本。
 
-### parent
+### 2.1 parent
 
 ```xml
 <parent>
@@ -100,7 +100,7 @@ spring-boot-dependencies-2.6.7.pom
 </properties>
 ```
 
-### dependencies
+### 2.2 dependencies
 
 ```xml
 <properties>
@@ -122,7 +122,7 @@ spring-boot-dependencies-2.6.7.pom
 
 升级依赖组件的版本需要写全 GAV 坐标。
 
-## 自动配置
+## 三、自动配置
 
 - 自动配置 Tomcat
 
@@ -142,9 +142,9 @@ spring-boot-dependencies-2.6.7.pom
 
 - 。。。
 
-## 底层注解
+## 四、底层注解
 
-### `@Configuration`
+### 4.1 `@Configuration`
 
 - 是一个配置类 > 配置文件，使用 `@Bean` 给容器注册组件
 
@@ -186,25 +186,25 @@ spring-boot-dependencies-2.6.7.pom
 
   **如何选择 Full || Lite ？**如果仅仅是添加简单的 Bean 组件（没有组件依赖、不会手动调用 `XxxConfiguration` 对象的 `@Bean` 方法），可以修改为 `false` 增加启动速度。
 
-### `@Bean、@Component、@Controller、@Service、@Repository`
+### 4.2 `@Bean、@Component、@Controller、@Service、@Repository`
 
 常用注解。
 
-### `@ComponentScan、@Import`
+### 4.3 `@ComponentScan、@Import`
 
 `@Import` 注解注册的组件，默认名称为**全类名**。
 
-### `@Conditional`
+### 4.4 `@Conditional`
 
 条件装配：
 
 ![image.png](images/1602835786727-28b6f936-62f5-4fd6-a6c5-ae690bd1e31d.png)
 
-### `@ImportResource`
+### 4.5 `@ImportResource`
 
 导入原生配置文件引用：`@ImportResource("classpath:beans.xml")`。
 
-### `@ConfigurationProperties`
+### 4.6 `@ConfigurationProperties`
 
 > 只有容器中的类可以使用 `@ConfigurationProperties` 注解。
 
@@ -214,7 +214,7 @@ spring-boot-dependencies-2.6.7.pom
 
    可以用于为导入的第三方包组件设置初始值。
 
-## 自动配置原理
+## 五、自动配置原理
 
 ```java
 @SpringBootConfiguration
@@ -224,7 +224,7 @@ spring-boot-dependencies-2.6.7.pom
 public @interface SpringBootApplication {...}
 ```
 
-### `@SpringBootConfiguration`
+### 5.1 `@SpringBootConfiguration`
 
 ```java
 @Configuration
@@ -243,11 +243,11 @@ public @interface SpringBootConfiguration {
 
 是一个 `@Configuration` 配置类。
 
-### `@ComponentScan`
+### 5.2 `@ComponentScan`
 
 指定包扫描路径。
 
-### `@EnableAutoConfiguration`
+### 5.3 `@EnableAutoConfiguration`
 
 ```java
 @AutoConfigurationPackage
@@ -328,7 +328,7 @@ public @interface EnableAutoConfiguration {...}
 
    组件具体加载不加载，依据 Spring Boot 的按需加载机制决定。
 
-### 修改默认配置
+### 5.4 修复默认配置
 
 ```java
 // org.springframework.boot.autoconfigure.web.servlet.DispatcherServletAutoConfiguration
@@ -343,7 +343,7 @@ public MultipartResolver multipartResolver(MultipartResolver resolver) {
 
 组合拳：`@ConditionalOnBean` + `@ConditionalOnMissingBean`
 
-### `SpringBootCondition`？
+### 5.5 `SpringBootCondition`？
 
 `Condition` 生效？
 
@@ -393,23 +393,23 @@ public boolean shouldSkip(@Nullable AnnotatedTypeMetadata metadata, @Nullable Co
 }
 ```
 
-## 常用插件
+## 六、常用插件
 
-### lombok
+### 6.1 lombok
 
-### dev-tools
+### 6.2 dev-tools
 
 `dev-tools` 是 restart 级别的插件，如果想要支持热更新 reload，需要使用付费 ==**JRebel**==。
 
-## `yaml`
+## 七、yaml
 
-### 字符串
+### 7.1 字符串
 
 - 可以不加单引号或双引号
 - 单引号会转义字符，例如 `\n` -> `\\n` 进行原样输出
 - 双引号不会转移字符，例如 `\n` 会被输出为换行
 
-### 配置提示
+### 7.2 配置提示
 
 Annotation Processor：`spring-boot-configuration-processor`
 
@@ -417,9 +417,9 @@ Annotation Processor：`spring-boot-configuration-processor`
 
 注意，打包的时候需要将其排除：![image-20220603005842447](images/image-20220603005842447.png)
 
-## Web 开发
+## 八、Web 开发
 
-### 接管 Spring MVC
+### 8.1 接管 Spring MVC
 
 1. **不用 `@EnableWebMvc` 注解。使用 `@Configuration` + `WebMvcConfigurer` 自定义规则**
 
@@ -445,9 +445,9 @@ Annotation Processor：`spring-boot-configuration-processor`
    public static class EnableWebMvcConfiguration extends DelegatingWebMvcConfiguration implements ResourceLoaderAware {...}
    ```
 
-### 基础功能分析
+### 8.2 基础功能分析
 
-#### 静态资源访问目录
+#### 8.2.1 静态资源访问目录
 
 静态资源可以放在以下目录：
 
@@ -460,7 +460,7 @@ Annotation Processor：`spring-boot-configuration-processor`
 
 原理：先去 **Controller** 中找映射，找不到再交给**静态资源处理器**处理，还是找不到就 404。
 
-#### 静态资源路径
+#### 8.2.2 静态资源路径
 
 ```yaml
 spring:
@@ -473,7 +473,7 @@ spring:
 
 解释：静态资源去 `/albrus/` 文件夹下寻找，并且访问路径需要添加前缀 `/res/`
 
-#### webjar
+#### 8.2.3 webjar
 
 > 自动映射：`/webjars/**`：`http://localhost:8080/webjars/jquery/3.5.1/jquery.js`
 
@@ -485,7 +485,7 @@ spring:
 </dependency>
 ```
 
-### 欢迎页支持
+### 8.3 欢迎页支持
 
 欢迎页：静态资源下添加 `index.html` 页面
 
@@ -511,7 +511,7 @@ WelcomePageHandlerMapping(TemplateAvailabilityProviders templateAvailabilityProv
 }
 ```
 
-### REST
+### 8.4 REST
 
 ```yaml
 spring:
@@ -536,7 +536,7 @@ spring:
 
 自定义一个 `HiddenHttpMethodFilter`，![image-20220604100439890](images/image-20220604100439890.png)
 
-### `DispatcherServlet`
+### 8.5 `DispatcherServlet`
 
 ```java
 DispatcherServlet extends FrameworkServlet
@@ -604,9 +604,9 @@ private void initHandlerMappings(ApplicationContext context) {
 
 `RequestMappingHandlerMapping` 是 `AbstractHandlerMapping` 的子类，`AbstractHandlerMapping` 实现了 `Ordered` 接口，且 `RequestMappingHandlerMapping mapping = createRequestMappingHandlerMapping();mapping.setOrder(0);`
 
-### 参数处理及原理
+### 8.6 参数处理及原理
 
-#### 常用注解
+#### 8.6.1 常用注解
 
 `@PathVariable、@RequestHeader、@ModelAttribute、@RequestParam、@MatrixVariable、@CookieValue、@RequestBody`
 
@@ -627,9 +627,9 @@ private void initHandlerMappings(ApplicationContext context) {
   }
   ```
 
-#### 不常用注解
+#### 8.6.2 不常用注解
 
-##### `@RequestAttribute & @MatrixVariable`
+##### 8.6.2.1 `@RequestAttribute & @MatrixVariable`
 
 `@RequestAttribute`：从 Request Attributes 中获取
 
@@ -643,7 +643,7 @@ private void initHandlerMappings(ApplicationContext context) {
   - `/cars/{path;xxxx=xxxx;yyyy=yyyy}` --> `@MatrixVariable`，用英文 `;` 分割
   - `cars/{path1;x=x;y=y}/{path2;z=z}`
 
-##### 开启矩阵变量（`WebMvcConfigurer`）
+##### 8.6.2.2 开启矩阵变量（`WebMvcConfigurer`）
 
 Spring Boot 会获取容器中的所有 `WebMvcConfigurer` 接口类型的实例对象，在合适的时候调用接口中的方法：
 
@@ -748,7 +748,7 @@ public Tip boss(@MatrixVariable(value = "age",pathVar = "bossId") Integer bossAg
                 @MatrixVariable(value = "age",pathVar = "empId") Integer empAge) {...}
 ```
 
-#### 参数解析原理
+#### 8.6.3 参数解析原理
 
 获取到 `HandlerExecutionChain mappedHandler` 过后，再交由 `HandlerAdapter ha` 去执行具体的业务方法，包括参数解析和返回值解析：
 
@@ -945,7 +945,7 @@ public class PathVariableMethodArgumentResolver extends AbstractNamedValueMethod
 - `PathVariableMethodArgumentResolver` 支持 `@PathVariable` 注解
 - 路径参数已经被提前放在请求域中：`HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE`
 
-#### `Servlet API`
+#### 8.6.4 `Servlet API`
 
 `ServletRequestMethodArgumentResolver`：
 
@@ -970,7 +970,7 @@ public boolean supportsParameter(MethodParameter parameter) {
 
 - `ServletRequestMethodArgumentResolver` 支持以上类型的注解
 
-#### `Map & Model`
+#### 8.6.5 `Map & Model`
 
 ```java
 @GetMapping("/albrus")
@@ -1024,9 +1024,9 @@ protected void exposeModelAsRequestAttributes(Map<String, Object> model, HttpSer
 }
 ```
 
-#### POJO 类参数绑定
+#### 8.6.6 POJO 类参数绑定
 
-##### 底层原理
+##### 8.6.6.1 底层原理
 
 底层使用 `ServletModelAttributeMethodProcessor` 实现。
 
@@ -1238,7 +1238,7 @@ private GenericConverter getRegisteredConverter(TypeDescriptor sourceType,
 
 寻找时，会把 超类 和 所有接口 的类型都拿去比较，尽可能的找：![image-20220605134316954](images/image-20220605134316954.png)
 
-##### 自定义 `Converter`
+##### 8.6.6.2 自定义 `Converter`
 
 `Converter` 底层是一个接口：`@FunctionalInterface public interface Converter<S, T> {}`。
 
@@ -1268,7 +1268,7 @@ public WebMvcConfigurer webMvcConfigurer() {
 }
 ```
 
-##### GET 请求封装 POJO
+##### 8.6.6.3 GET 请求封装 POJO
 
 ```http
 Request URL: http://localhost:8080/cat
@@ -1302,9 +1302,9 @@ public Cat cat(Cat cat) {
   - 不加注解: 使用 `ServletModelAttributeMethodProcessor` 解析参数
 - `@RequestParam` 可以搭配自定义 `Converter` 解析参数
 
-### 响应处理及原理
+### 8.7 响应处理及原理
 
-#### 响应 JSON
+#### 8.7.1 响应 JSON
 
 Spring Boot Web 自动引入了 Jackson：
 
@@ -1352,7 +1352,7 @@ Spring Boot Web 自动引入了 Jackson：
 
 ![image-20220607211601524](images/image-20220607211601524.png)
 
-#### 底层原理
+#### 8.7.2 底层原理
 
 ```java
 // org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod#invokeAndHandle
@@ -1650,7 +1650,7 @@ protected void writeInternal(Object object, @Nullable Type type, HttpOutputMessa
 }
 ```
 
-#### 内容协商原理：MediaType
+#### 8.7.3 内容协商原理：MediaType
 
 通过上一节的梳理，应该不用再过多介绍了吧？
 
@@ -1685,7 +1685,7 @@ public List<MediaType> resolveMediaTypes(NativeWebRequest request) throws HttpMe
 - 内置的 `ContentNegotiationStrategy`：![image-20220608222548455](images/image-20220608222548455.png)
 - ==**注意：找到了便直接返回，不会遍历所有策略**==
 
-#### 基于请求参数的内容协商
+#### 8.7.4 基于请求参数的内容协商
 
 ```yaml
 spring:
@@ -1850,7 +1850,7 @@ public ContentNegotiationManager build() {
 
   - `configurer.mediaTypes(getDefaultMediaTypes());`：获取并注册默认的 Map 映射关系
 
-#### 自定义 `HttpMessageConverter`
+#### 8.7.5 自定义 `HttpMessageConverter`
 
 `HttpMessageConverter` 底层是一个 `public interface HttpMessageConverter<T> {}`，同样我们使用 `WebMvcConfigurer` 来达到扩展 Spring MVC 自定义功能的目的！
 
@@ -1869,7 +1869,7 @@ public WebMvcConfigurer webMvcConfigurer() {
 }
 ```
 
-#### 基于请求参数的内容协商与自定义 `HttpMessageConverter`
+#### 8.7.6 基于请求参数的内容协商与自定义 `HttpMessageConverter`
 
 重点便是在缓存映射中存放关键字与 MediaType 的映射关系，例如：`xml -> application/xml`：
 
@@ -1902,7 +1902,7 @@ public void configureContentNegotiation(ContentNegotiationConfigurer configurer)
           albrus: application/albrus
   ```
 
-### 拦截器
+### 8.8 拦截器
 
 拦截器原理便是在 `doDispatch()` 的过程中做的三个前中后操作，比较简单：
 
@@ -1990,9 +1990,9 @@ boolean applyPreHandle(HttpServletRequest request, HttpServletResponse response)
 
 - ==**总结：一定会执行已经执行过 `applyPreHandle` 的拦截器的 `afterCompletion`**==
 
-### 文件参数解析器
+### 8.9 文件参数解析器
 
-#### 自动注册
+#### 8.9.1 自动注册
 
 ```java
 @Configuration(proxyBeanMethods = false)
@@ -2018,11 +2018,11 @@ public class MultipartAutoConfiguration {
 - 参数绑定：`spring.servlet.multipart -> MultipartProperties`
 - 自动注册参数解析器：`StandardServletMultipartResolver`
 
-#### 参数接收
+#### 8.9.2 参数接收
 
 `@RequestPart`，原理不再赘述。
 
-### 异常/错误处理
+### 8.10 异常/错误处理
 
 Spring Boot 默认内置了异常处理机制：
 
@@ -2060,11 +2060,11 @@ public class AlbrusHandlerExceptionResolver implements HandlerExceptionResolver 
 - 异常不能被任何处理器处理，会被自动转到 `/error`：也是 `sendError()`
 - `BasicErrorController` 想要去的页面，是由 `ErrorViewResolver` 解析出来的
 
-### Web 原生组件
+### 8.11 Web 原生组件
 
 > Servlet、Filter、Listener
 
-#### @WebXxxx
+#### 8.11.1 @WebXxxx
 
 使用注解注入原生组件，前提是==**需要配置包扫描路径**==：`@ServletComponentScan(basePackages = "com.albrus")`
 
@@ -2076,7 +2076,7 @@ public class AlbrusHandlerExceptionResolver implements HandlerExceptionResolver 
 
 - `@WebListener`
 
-#### RegistrationBean
+#### 8.11.2 RegistrationBean
 
 如果不是特别必要，可以使用各个 `RegistrationBean` 来注册原生组件：
 
@@ -2084,9 +2084,9 @@ public class AlbrusHandlerExceptionResolver implements HandlerExceptionResolver 
 - `FilterRegistrationBean`
 - `ServletListenerRegistrationBean`
 
-### 嵌入式 Servlet 容器
+### 8.12 嵌入式 Servlet 容器
 
-#### 切换
+#### 8.12.1 切换
 
 默认支持的 Web Server：`Tomcat`, `Jetty`, `Undertow`
 
@@ -2094,7 +2094,7 @@ public class AlbrusHandlerExceptionResolver implements HandlerExceptionResolver 
 
 切换服务器只需要修改 pom GAV 引用即可。
 
-#### 原理
+#### 8.12.2 原理
 
 1. Spring Boot 发现当前是 Web 环境，会创建一个 `ServletWebServerApplicationContext` 容器
 
@@ -2257,7 +2257,7 @@ public class AlbrusHandlerExceptionResolver implements HandlerExceptionResolver 
    }
    ```
 
-#### 自定义
+#### 8.12.3 自定义
 
 1. 实现 `WebServerFactoryCustomizer<ConfigurableServletWebServerFactory> `
 
@@ -2272,25 +2272,607 @@ public class AlbrusHandlerExceptionResolver implements HandlerExceptionResolver 
 
    完全由自己实现 `WebServerFactory`。
 
+## 九、数据访问
+
+### 9.1 SQL
+
+#### 9.1.1 导入 JDBC
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-jdbc</artifactId>
+</dependency>
+```
+
+![image-20220618215725554](images/image-20220618215725554.png)
+
+Spring Boot 默认导入 HikariDataSource。
+
+导入数据库驱动：
+
+```xml
+<mysql.version>8.0.22</mysql.version>
+
+<dependency>
+    <groupId>mysql</groupId>
+    <artifactId>mysql-connector-java</artifactId>
+</dependency>
+```
+
+- 版本仲裁机制，不再赘述
+
+#### 9.1.2 自动配置原理
+
+- `DataSourceAutoConfiguration`： **数据源的自动配置**
+
+- - 修改数据源相关的配置：**spring.datasource**
+
+    ```yaml
+    spring:
+      datasource:
+        url: jdbc:mysql://localhost:3306/albrus
+        username: root
+        password: 123456
+        driver-class-name: com.mysql.jdbc.Driver
+    ```
+
+  - **数据库连接池的配置，是自己容器中没有 DataSource 才自动配置的**
+
+  - 底层配置好的连接池是：==`HikariDataSource`==
+
+- ```java
+  @Configuration(proxyBeanMethods = false)
+  @Conditional(PooledDataSourceCondition.class)
+  @ConditionalOnMissingBean({ DataSource.class, XADataSource.class })
+  @Import({ DataSourceConfiguration.Hikari.class, DataSourceConfiguration.Tomcat.class,
+           DataSourceConfiguration.Dbcp2.class, DataSourceConfiguration.OracleUcp.class,
+           DataSourceConfiguration.Generic.class, DataSourceJmxConfiguration.class })
+  protected static class PooledDataSourceConfiguration {...}
+  
+  
+  /**
+   * Hikari DataSource configuration.
+   */
+  @Configuration(proxyBeanMethods = false)
+  @ConditionalOnClass(HikariDataSource.class)
+  @ConditionalOnMissingBean(DataSource.class)
+  @ConditionalOnProperty(name = "spring.datasource.type", havingValue = "com.zaxxer.hikari.HikariDataSource",
+                         matchIfMissing = true)
+  static class Hikari {
+  
+      @Bean
+      @ConfigurationProperties(prefix = "spring.datasource.hikari")
+      HikariDataSource dataSource(DataSourceProperties properties) {
+          HikariDataSource dataSource = createDataSource(properties, HikariDataSource.class);
+          if (StringUtils.hasText(properties.getName())) {
+              dataSource.setPoolName(properties.getName());
+          }
+          return dataSource;
+      }
+  
+  }
+  ```
+
+- `DataSourceTransactionManagerAutoConfiguration`：**事务管理器的自动配置**
+
+- `JdbcTemplateAutoConfiguration`： **JdbcTemplate 的自动配置，可以来对数据库进行 CRUD**
+
+  - 修改 JdbcTemplate 相关配置：`@ConfigurationProperties(prefix = "spring.jdbc")`
+
+- `JndiDataSourceAutoConfiguration`： JNDI 的自动配置
+- `XADataSourceAutoConfiguration`： 分布式事务相关的
+
+#### 9.1.3 自定义数据源 Druid
+
+> https://github.com/alibaba/druid
+>
+> 两种方式：
+>
+> 1. 自定义注入：DataSource
+> 2. 引入 Druid Starter
+
+##### 9.1.3.1 创建数据源
+
+```xml
+<dependency>
+    <groupId>com.alibaba</groupId>
+    <artifactId>druid</artifactId>
+    <version>1.1.17</version>
+</dependency>
+
+<bean id="dataSource" class="com.alibaba.druid.pool.DruidDataSource"
+      destroy-method="close">
+    <property name="url" value="${jdbc.url}" />
+    <property name="username" value="${jdbc.username}" />
+    <property name="password" value="${jdbc.password}" />
+    <property name="maxActive" value="20" />
+    <property name="initialSize" value="1" />
+    <property name="maxWait" value="60000" />
+    <property name="minIdle" value="1" />
+    <property name="timeBetweenEvictionRunsMillis" value="60000" />
+    <property name="minEvictableIdleTimeMillis" value="300000" />
+    <property name="testWhileIdle" value="true" />
+    <property name="testOnBorrow" value="false" />
+    <property name="testOnReturn" value="false" />
+    <property name="poolPreparedStatements" value="true" />
+    <property name="maxOpenPreparedStatements" value="20" />
+```
+
+##### 9.1.3.2 SttViewServlet
+
+StatViewServlet 的用途包括：
+
+- 提供监控信息展示的 HTML 页面
+- 提供监控信息的 JSON API
+
+```xml
+<servlet>
+    <servlet-name>DruidStatView</servlet-name>
+    <servlet-class>com.alibaba.druid.support.http.StatViewServlet</servlet-class>
+</servlet>
+<servlet-mapping>
+    <servlet-name>DruidStatView</servlet-name>
+    <url-pattern>/druid/*</url-pattern>
+</servlet-mapping>
+```
+
+> 如果1.1.17报错nested exception is java.lang.**NoClassDefFoundError**: com/alibaba/druid/support/http/**StatViewServlet**，请更换新版本的Druid。
+
+##### 9.1.3.3 StatFilter
+
+用于统计监控信息；如SQL监控、URI监控。
+
+系统中所有 Filter：
+
+| 别名          | Filter类名                                              |
+| ------------- | ------------------------------------------------------- |
+| default       | com.alibaba.druid.filter.stat.StatFilter                |
+| stat          | com.alibaba.druid.filter.stat.StatFilter                |
+| mergeStat     | com.alibaba.druid.filter.stat.MergeStatFilter           |
+| encoding      | com.alibaba.druid.filter.encoding.EncodingConvertFilter |
+| log4j         | com.alibaba.druid.filter.logging.Log4jFilter            |
+| log4j2        | com.alibaba.druid.filter.logging.Log4j2Filter           |
+| slf4j         | com.alibaba.druid.filter.logging.Slf4jLogFilter         |
+| commonlogging | com.alibaba.druid.filter.logging.CommonsLogFilter       |
+| wall          |                                                         |
+
+需要给**数据源**中配置如下属性，可以允许多个 Filter，多个用 , 分割：
+
+```xml
+<property name="filters" value="stat,slf4j" />
+```
+
+慢 SQL：
+
+```xml
+<bean id="stat-filter" class="com.alibaba.druid.filter.stat.StatFilter">
+    <!-- 使用 slowSqlMillis 定义慢SQL的时长 -->
+    <property name="slowSqlMillis" value="10000" />
+    <property name="logSlowSql" value="true" />
+</bean>
+```
+
+#### 9.1.4 Druid Starter
+
+##### 9.1.4.1 引入 Starter
+
+```xml
+<dependency>
+    <groupId>com.alibaba</groupId>
+    <artifactId>druid-spring-boot-starter</artifactId>
+    <version>1.2.11</version>
+</dependency>
+```
+
+##### 9.1.4.2 自动配置
+
+```java
+@Configuration
+@ConditionalOnClass(DruidDataSource.class)
+// 确保在之前配置数据源
+@AutoConfigureBefore(DataSourceAutoConfiguration.class)
+@EnableConfigurationProperties({DruidStatProperties.class, DataSourceProperties.class})
+@Import({DruidSpringAopConfiguration.class,
+    DruidStatViewServletConfiguration.class,
+    DruidWebStatFilterConfiguration.class,
+    DruidFilterConfiguration.class})
+public class DruidDataSourceAutoConfigure {
+    private static final Logger LOGGER = LoggerFactory.getLogger(DruidDataSourceAutoConfigure.class);
+
+    @Bean(initMethod = "init")
+    @ConditionalOnMissingBean
+    public DataSource dataSource() {
+        LOGGER.info("Init DruidDataSource");
+        return new DruidDataSourceWrapper();
+    }
+}
+```
+
+- 扩展配置项 **spring.datasource.druid**
+
+- DruidSpringAopConfiguration.class：监控SpringBean的；配置项：**spring.datasource.druid.aop-patterns**
+
+- DruidStatViewServletConfiguration.class：监控页的配置：**spring.datasource.druid.stat-view-servlet；默认开启**
+
+- DruidWebStatFilterConfiguration.class：web监控配置；**spring.datasource.druid.web-stat-filter；默认开启**
+
+- DruidFilterConfiguration.class：所有Druid自己filter的配置
+
+  ```java
+  private static final String FILTER_STAT_PREFIX = "spring.datasource.druid.filter.stat";
+  private static final String FILTER_CONFIG_PREFIX = "spring.datasource.druid.filter.config";
+  private static final String FILTER_ENCODING_PREFIX = "spring.datasource.druid.filter.encoding";
+  private static final String FILTER_SLF4J_PREFIX = "spring.datasource.druid.filter.slf4j";
+  private static final String FILTER_LOG4J_PREFIX = "spring.datasource.druid.filter.log4j";
+  private static final String FILTER_LOG4J2_PREFIX = "spring.datasource.druid.filter.log4j2";
+  private static final String FILTER_COMMONS_LOG_PREFIX = "spring.datasource.druid.filter.commons-log";
+  private static final String FILTER_WALL_PREFIX = "spring.datasource.druid.filter.wall";
+  ```
+
+##### 9.1.4.3 配置示例
+
+> Spring Boot：[配置示例](https://github.com/alibaba/druid/tree/master/druid-spring-boot-starter)
+>
+> 配置项列表：[配置属性列表](https://github.com/alibaba/druid/wiki/DruidDataSource%E9%85%8D%E7%BD%AE%E5%B1%9E%E6%80%A7%E5%88%97%E8%A1%A8)
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/db_account
+    username: root
+    password: 123456
+    driver-class-name: com.mysql.jdbc.Driver
+
+    druid:
+      aop-patterns: com.albrus.*  # 监控 Spring Bean
+      filters: stat,wall     # 底层开启功能，stat（sql监控），wall（防火墙）
+
+      stat-view-servlet:   # 配置监控页功能
+        enabled: true
+        login-username: admin
+        login-password: admin
+        resetEnable: false
+
+      web-stat-filter:  # 监控web
+        enabled: true
+        urlPattern: /*
+        exclusions: '*.js,*.gif,*.jpg,*.png,*.css,*.ico,/druid/*'
+
+      filter:
+        stat:    # 对上面filters里面的stat的详细配置
+          slow-sql-millis: 1000
+          logSlowSql: true
+          enabled: true
+        wall:
+          enabled: true
+          config:
+            drop-table-allow: false
+```
+
+### 9.2 NoSQL
+
+Redis、Jedis
+
+## 十、单元测试
+
+> Spring Boot 2.2.0 版本开始引入 JUnit 5 作为单元测试默认库
+>
+> Spring Boot 2.4 以上版本移除了默认对 Vintage 的依赖，如果需要兼容 JUnit 4 需要自行引入（不能使用 JUnit 4 的功能 `@Test`）
+
+作为最新版本的JUnit框架，JUnit5与之前版本的Junit框架有很大的不同。由三个不同子项目的几个不同模块组成。
+
+**JUnit 5 = JUnit Platform + JUnit Jupiter + JUnit Vintage**
+
+**JUnit Platform**: Junit Platform 是在 JVM 上启动测试框架的基础，不仅支持 Junit 自制的测试引擎，其他测试引擎也都可以接入。
+
+**JUnit Jupiter**: JUnit Jupiter 提供了 JUnit5 的新的编程模型，是 JUnit5 新特性的核心。内部包含了一个**测试引擎**，用于在 Junit Platform 上运行。
+
+**JUnit Vintage**: 由于 JUint 已经发展多年，为了照顾老的项目，JUnit Vintage 提供了兼容 JUnit4.x、Junit3.x 的测试引擎。
+
+![img](images/1606796395719-eb57ab48-ae44-45e5-8d2e-c4d507aff49a-16555453243952.png)
+
+### 10.1 使用区别
+
+以前：`@SpringBootTest + @RunWith(SpringRunner.class)`，现在：`@SpringBootTest`，`@SpringBootTest` 后便默认具有 Spring 的功能：`@Autowired、@Transactional...`，无需再指定 `@ContextConfiguration、@RunWith`。
+
+### 10.2 JUnit 5 常用注解
+
+> https://junit.org/junit5/docs/current/user-guide/#writing-tests-annotations
+
+- **@Test：**表示方法是测试方法。但是与 JUnit 4 的 `@Test` 不同，他的职责非常单一不能声明任何属性，拓展的测试将会由 Jupiter 提供额外测试
+- **@ParameterizedTest：**表示方法是参数化测试
+- **@RepeatedTest：**表示方法可重复执行（重复次数）
+- **@DisplayName：**为测试类或者测试方法设置展示名称
+- **@BeforeEach：**表示在每个单元测试之前执行
+- **@AfterEach：**表示在每个单元测试之后执行
+- **@BeforeAll：**表示在所有单元测试之前执行（需要是 `static` 方法，且只会执行一次）
+- **@AfterAll：**表示在所有单元测试之后执行（需要是 `static` 方法，且只会执行一次）
+- **@Tag：**表示单元测试类别，类似于 JUnit 4 中的 `@Categories`
+- **@Disabled：**表示测试类或测试方法不执行，类似于JUnit4中的 `@Ignore`
+- **@Timeout：**表示测试方法运行如果超过了指定时间将会返回错误
+- **@ExtendWith：**为测试类或测试方法提供扩展类引用
+
+### 10.3 断言
+
+> JUnit 5 内置的断言可以分成如下几个类别：
+>
+> - 检查业务逻辑返回的数据是否合理
+> - 所有的测试运行结束以后，会有一个详细的测试报告
+>
+> JUnit 5 提供的断言方法均是 `org.junit.jupiter.api.Assertions` 中的静态方法。
+
+1. 简单断言
+
+   `Assertions.assertEquals()`、`assertSame`、`assertTrue`、`assertNull`...
+
+2. 数组断言
+
+   `Assertions.assertArrayEquals()`
+
+3. 组合断言
+
+   `Assertions.assertAll()`：接受多个 `org.junit.jupiter.api.Executable` 函数式接口的实例作为要验证的断言：
+
+   ```java
+   assertAll("Math",
+       () -> assertEquals(2, 1 + 1),
+       () -> assertTrue(1 > 0)
+    );
+   ```
+
+4. 异常断言
+
+   `Assertions.assertThrows()`
+
+5. 超时断言
+
+   `Assertions.assertTimeout()`
+
+6. 快速失败
+
+   通过 `Assertions.fail()` 方法直接使得测试失败
+
+### 10.4 前置条件
+
+JUnit 5 中的前置条件（**assumptions【假设】**）类似于断言，不同之处在于：
+
+- **不满足的断言会使得测试方法失败**
+- **不满足的前置条件只会使得测试方法的执行终止（和 `@Disabled` 效果一样）**
+
+前置条件可以看成是测试方法执行的前提，当该前提不满足时，就没有继续执行的必要。
+
+注意是在 `assumptions` 下的注解。
+
+### 10.5 嵌套测试
+
+JUnit 5 可以通过 Java 中的内部类和@ `Nested` 注解实现嵌套测试，从而可以更好的把相关的测试方法组织在一起。
+
+**内层的 `@Test` 可以驱动外层的 `@Before(After)Each/All`。**
+
+### 10.6 参数化测试
+
+> 参数化测试是JUnit5很重要的一个新特性，它使得用不同的参数多次运行测试成为了可能，也为我们的单元测试带来许多便利。
+
+利用 `@ValueSource` 等注解，我们可以**将不同的输入参数配置到注解中进行多次单元测试**，极大简便了单元测试的设计。
+
+- **@ValueSource**: 为参数化测试指定入参来源，支持八大基础类以及 String 、Class 类型
+- **@NullSource**: 表示为参数化测试提供一个 NULL 的入参
+- **@EnumSource**: 表示为参数化测试提供一个枚举入参
+- **@CsvFileSource**：表示读取指定 CSV 文件内容作为参数化测试入参
+- **@MethodSource**：表示读取指定方法的返回值作为参数化测试入参（**注意方法返回需要是一个流**）
+
+```java
+@ParameterizedTest
+@ValueSource(strings = {"one", "two", "three"})
+@DisplayName("参数化测试1")
+public void parameterizedTest1(String string) {
+    System.out.println(string);
+    Assertions.assertTrue(StringUtils.isNotBlank(string));
+}
 
 
+@ParameterizedTest
+@MethodSource("method")    //指定方法名
+@DisplayName("方法来源参数")
+public void testWithExplicitLocalMethodSource(String name) {
+    System.out.println(name);
+    Assertions.assertNotNull(name);
+}
 
+static Stream<String> method() {
+    return Stream.of("apple", "banana");
+}
+```
 
+**还可以支持外部的各类入参。如：CSV,YML,JSON 文件甚至方法的返回值也可以作为入参。只需要实现 `ArgumentsProvider` 接口，任何外部文件都可以作为它的入参。**
 
+### 10.7 迁移指南
 
+在进行迁移的时候需要注意如下的变化：
 
+- 注解在 `org.junit.jupiter.api` 包中，断言在 `org.junit.jupiter.api.Assertions` 类中，前置条件在 `org.junit.jupiter.api.Assumptions 类中`
+- 把 `@Before` 和 `@After` 替换成 `@BeforeEach` 和 `@AfterEach`
+- 把 `@BeforeClass` 和 `@AfterClass` 替换成 `@BeforeAll` 和 `@AfterAll`
+- 把 `@Ignore` 替换成 `@Disabled`
+- 把 `@Category` 替换成 `@Tag`
+- 把 `@RunWith`、`@Rule` 和 `@ClassRule` 替换成 `@ExtendWith`
 
+## 十一、指标监控
 
+### 11.1 Spring Boot Actuator
 
+未来每一个微服务在云上部署以后，我们都需要对其进行监控、追踪、审计、控制等。Spring Boot就抽取了Actuator场景，使得我们每个微服务快速引用即可获得生产级别的应用监控、审计等功能。
 
+### 11.2 Actuator Endpoint
 
+| ID                 | 描述                                                         |
+| ------------------ | ------------------------------------------------------------ |
+| `auditevents`      | 暴露当前应用程序的审核事件信息。需要一个`AuditEventRepository组件`。 |
+| `beans`            | 显示应用程序中所有Spring Bean的完整列表。                    |
+| `caches`           | 暴露可用的缓存。                                             |
+| `conditions`       | 显示自动配置的所有条件信息，包括匹配或不匹配的原因。         |
+| `configprops`      | 显示所有`@ConfigurationProperties`。                         |
+| `env`              | 暴露Spring的属性`ConfigurableEnvironment`                    |
+| `flyway`           | 显示已应用的所有Flyway数据库迁移。 需要一个或多个`Flyway`组件。 |
+| ==`health`==       | 显示应用程序运行状况信息。                                   |
+| `httptrace`        | 显示HTTP跟踪信息（默认情况下，最近100个HTTP请求-响应）。需要一个`HttpTraceRepository`组件。 |
+| `info`             | 显示应用程序信息。                                           |
+| `integrationgraph` | 显示Spring `integrationgraph` 。需要依赖`spring-integration-core`。 |
+| ==`loggers`==      | 显示和修改应用程序中日志的配置。                             |
+| `liquibase`        | 显示已应用的所有Liquibase数据库迁移。需要一个或多个`Liquibase`组件。 |
+| ==`metrics`==      | 显示当前应用程序的“指标”信息。                               |
+| `mappings`         | 显示所有`@RequestMapping`路径列表。                          |
+| `scheduledtasks`   | 显示应用程序中的计划任务。                                   |
+| `sessions`         | 允许从Spring Session支持的会话存储中检索和删除用户会话。需要使用Spring Session的基于Servlet的Web应用程序。 |
+| `shutdown`         | 使应用程序正常关闭。默认禁用。                               |
+| `startup`          | 显示由`ApplicationStartup`收集的启动步骤数据。需要使用`SpringApplication`进行配置`BufferingApplicationStartup`。 |
+| `threaddump`       | 执行线程转储。                                               |
 
+如果您的应用程序是Web应用程序（Spring MVC，Spring WebFlux 或 Jersey），则可以使用以下附加端点：
 
-## 自定义 starter
+| ID           | 描述                                                         |
+| ------------ | ------------------------------------------------------------ |
+| `heapdump`   | 返回`hprof`堆转储文件。                                      |
+| `jolokia`    | 通过HTTP暴露JMX bean（需要引入Jolokia，不适用于WebFlux）。需要引入依赖`jolokia-core`。 |
+| `logfile`    | 返回日志文件的内容（如果已设置`logging.file.name`或`logging.file.path`属性）。支持使用HTTP`Range`标头来检索部分日志文件的内容。 |
+| `prometheus` | 以Prometheus服务器可以抓取的格式公开指标。需要依赖`micrometer-registry-prometheus`。 |
+
+### 11.3 定制 Endpoint
+
+```java
+@Component
+public class AlbrusHealthIndicator implements HealthIndicator {...}
+@Component
+public class MyComHealthIndicator extends AbstractHealthIndicator {...}
+
+@Component
+public class ExampleInfoContributor implements InfoContributor {...}
+```
+
+```yaml
+management:
+    health:
+      enabled: true
+      show-details: always #总是显示详细信息。可显示每个模块的状态信息
+```
+
+## 十二、配置文件
+
+**查找位置：**
+
+1. classpath 根路径
+2. classpath 根路径下config目录
+3. jar包当前目录
+4. jar包当前目录的config目录
+5. /config子目录的直接子目录
+
+**加载顺序：**
+
+1. 当前jar包内部的 application.properties 和 application.yaml
+2. 当前jar包内部的 application-{profile}.properties 和 application-{profile}.yaml
+3. 引用的外部jar包的 application.properties 和 application.yaml
+4. 引用的外部jar包的 application-{profile}.properties 和 application-{profile}.yaml
+
+==**指定环境优先，外部优先，后面的可以覆盖前面的同名配置项。**==
+
+## 十三、自定义 starter
 
 > All **official** starters follow a similar naming pattern; `spring-boot-starter-*`
 >
 > For example, a third-party starter project called `thirdpartyproject` would typically be named `thirdpartyproject-spring-boot-starter`
 >
-> named: `project-spring-boot-starter`
+> named: `project-spring-boot-starter-*`
+
+![image-20220621204817252](images/image-20220621204817252.png)
+
+- autoconfigure包中配置使用 **META-INF/spring.factories 中 EnableAutoConfiguration** 的值，使得项目启动加载指定的自动配置类
+- **编写自动配置类 xxxAutoConfiguration -> xxxxProperties**
+
+- - **@Configuration**
+  - **@Conditional**
+  - **@EnableConfigurationProperties**
+  - **@Bean**
+  - ......
+
+**引入starter** **--- xxxAutoConfiguration --- 容器中放入组件 ---- 绑定xxxProperties ----** **配置项**
+
+## 十四、Spring Boot 启动过程
+
+1. 创建 **SpringApplication**
+
+- - 保存一些信息。
+  - 判定当前应用的类型（Servlet） -> `ClassUtils`
+  - **bootstrappers**：初始启动引导器（**List<Bootstrapper>**）：`spring.factories` 中找 **org.springframework.boot.Bootstrapper**
+  - 找 **ApplicationContextInitializer**：`spring.factories` 中找 **ApplicationContextInitializer**
+
+- - `List<ApplicationContextInitializer<?>> initializers`
+
+- - 找 **ApplicationListener：应用监听器：**`spring.factories` 中找 **ApplicationListener**
+
+- - `List<ApplicationListener<?>> listeners`
+
+2. 运行 **SpringApplication**
+
+- - **StopWatch**
+  - **记录应用的启动时间**
+  - **创建引导上下文（Context环境）createBootstrapContext()**
+
+- - - ==获取到所有之前的 **`bootstrappers` 挨个执行 `intitialize()`** 来完成对引导启动器上下文环境设置==
+
+- - 让当前应用进入 **headless** 模式：**java.awt.headless**
+  - 获取所有 **RunListener**（运行监听器）【为了方便所有Listener进行事件感知】
+
+- - - `getSpringFactoriesInstances()` 去 `spring.factories` 中找 **SpringApplicationRunListener**
+
+- - ==遍历 SpringApplicationRunListener 调用 starting() 方法==
+
+- - - **相当于通知所有感兴趣系统正在启动过程的人，项目正在 starting。**
+
+- - 保存命令行参数；ApplicationArguments
+  - 准备环境 prepareEnvironment();
+
+- - - 返回或者创建基础环境信息对象。**StandardServletEnvironment**
+    - **配置环境信息对象。**
+
+- - - - **读取所有的配置源的配置属性值。**
+
+- - - 绑定环境信息
+    - ==监听器调用 `listener.environmentPrepared()` 通知所有的监听器当前环境准备完成==
+
+- - 创建IOC容器：`createApplicationContext()`
+
+- - - 根据项目类型（Servlet）创建容器，
+    - 当前会创建 **AnnotationConfigServletWebServerApplicationContext**
+
+- - **准备 ApplicationContext IOC 容器的基本信息 prepareContext()**
+
+- - - 保存环境信息
+    - IOC容器的后置处理流程。
+    - 应用初始化器；applyInitializers：
+
+- - - - ==遍历 ApplicationContextInitializer 调用 `initialize()` 对 IOC 容器进行初始化扩展功能==
+      - ==遍历 listener 调用 `contextPrepared()`。EventPublishRunListenr；通知所有的监听器 contextPrepared==
+
+- - - ==**所有的监听器 调用** **contextLoaded。通知所有的监听器** **contextLoaded；**==
+
+- - **刷新IOC容器**：`refreshContext()`
+
+- - - 创建容器中的所有组件（Spring注解）
+
+- - 容器刷新完成后工作：`afterRefresh()`
+  - ==所有监听器调用 `listeners.started(context)` **通知所有的监听器 started**==
+  - **调用所有runners；**callRunners()
+
+- - - **获取容器中的** **ApplicationRunner** 
+    - **获取容器中的** **CommandLineRunner**
+    - **合并所有runner并且按照@Order进行排序**
+    - ==遍历 runner 调用 run()==
+
+- - **如果以上有异常，**
+
+- - - **调用Listener 的 failed**
+
+- - ==调用所有监听器的 running 方法 `listeners.running(context)`; 通知所有的监听器 running== 
+  - **running如果有问题。继续通知 failed 。**调用所有 Listener 的 **failed；**通知所有的监听器 **failed**
 

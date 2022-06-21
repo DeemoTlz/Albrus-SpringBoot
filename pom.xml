@@ -25,6 +25,7 @@
         <module>boot-03-mq</module>
         <module>boot-04-redis</module>
         <module>boot-05-jedis</module>
+        <module>boot-06-data</module>
     </modules>
 
     <properties>
